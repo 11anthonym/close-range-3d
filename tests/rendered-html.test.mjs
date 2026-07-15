@@ -19,17 +19,20 @@ test("server-renders the Close Range game shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Close Range — 3D Browser Game<\/title>/i);
-  assert.match(html, /BEGIN CAMPAIGN/);
-  assert.match(html, /24 FACES/);
+  assert.match(html, /PLAY ONLINE NOW/);
+  assert.match(html, /24 SEQUENCES/);
   assert.match(html, /Fan-made browser tribute/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
-test("keeps the full 24-target campaign and both fire inputs", async () => {
+test("keeps the full 24-target campaign with free aim and both fire inputs", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
   assert.equal((source.match(/\{ codename:/g) ?? []).length, 24);
   assert.match(source, /event\.code === "Space"/);
   assert.match(source, /onPointerDown=\{handleStagePointer\}/);
+  assert.match(source, /onPointerMove=\{updateAim\}/);
+  assert.match(source, /raycaster\.intersectObject/);
+  assert.match(source, /if \(!hit\)/);
   assert.match(source, /species: "horse"/);
   assert.match(source, /species: "ostrich"/);
 });
