@@ -4,6 +4,9 @@ A playable, fan-made browser restoration of The Onion's 2009 *Close Range*
 parody game. This version preserves the original one-button joke as a real-time
 3D campaign built with React and Three.js.
 
+Once GitHub Pages is enabled, the browser build is available at:
+[11anthonym.github.io/close-range-3d](https://11anthonym.github.io/close-range-3d/)
+
 ## Play
 
 - Click, tap, or press `Space` to fire.
@@ -23,6 +26,7 @@ Build and verify:
 
 ```bash
 pnpm test
+pnpm build:pages
 ```
 
 ## Project note
