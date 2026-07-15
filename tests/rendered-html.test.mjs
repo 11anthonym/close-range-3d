@@ -80,3 +80,14 @@ test("uses procedural skin detail and commercial-inspired comedy systems", async
   assert.match(source, /setPlayerScores/);
   assert.match(source, /phase === "complete"/);
 });
+
+test("keeps the 3D scene readable on desktop and phone displays", async () => {
+  const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /toneMappingExposure = 1\.42/);
+  assert.match(source, /new THREE\.DirectionalLight\(0xffd9c4, 1\.35\)/);
+  assert.match(source, /new THREE\.PointLight\(0xffead7, 1\.8/);
+  assert.match(styles, /brightness\(1\.18\)/);
+  assert.match(styles, /@media \(max-width: 900px\)/);
+  assert.match(styles, /brightness\(1\.28\)/);
+});

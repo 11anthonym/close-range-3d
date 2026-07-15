@@ -1203,15 +1203,21 @@ function ThreeStage({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.42;
 
-    const ambient = new THREE.HemisphereLight(0xb6c0ba, 0x120a09, 1.25);
+    const ambient = new THREE.HemisphereLight(0xd8dfd8, 0x281818, 1.72);
     scene.add(ambient);
-    const key = new THREE.SpotLight(0xe9ded0, 4.5, 7, Math.PI / 5, 0.7, 1.5);
+    const key = new THREE.SpotLight(0xffeee0, 5.4, 7, Math.PI / 4.7, 0.72, 1.45);
     key.position.set(0.8, 2.2, 0.1);
     key.target.position.set(0, 0, -1.8);
     key.castShadow = true;
     scene.add(key, key.target);
+    const faceFill = new THREE.DirectionalLight(0xffd9c4, 1.35);
+    faceFill.position.set(-1.4, 0.45, 1.1);
+    scene.add(faceFill);
+    const softFront = new THREE.PointLight(0xffead7, 1.8, 4.5, 1.65);
+    softFront.position.set(0.2, 0.15, 0.55);
+    scene.add(softFront);
 
     const gun = buildGun();
     camera.add(gun);
