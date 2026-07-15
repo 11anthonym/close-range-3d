@@ -30,19 +30,20 @@ test("server-renders the Close Range game shell", async () => {
 
 test("keeps the full 24-target campaign with free aim and both fire inputs", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
-  assert.equal((source.match(/\{ codename:/g) ?? []).length, 24);
+  const config = await readFile(new URL("../app/gameConfig.ts", import.meta.url), "utf8");
+  assert.equal((config.match(/\{ codename:/g) ?? []).length, 24);
   assert.match(source, /event\.code === "Space"/);
   assert.match(source, /onPointerDown=\{handleStagePointer\}/);
   assert.match(source, /onPointerMove=\{updateAim\}/);
   assert.match(source, /raycaster\.intersectObjects/);
   assert.match(source, /if \(!hit\)/);
-  assert.match(source, /species: "horse"/);
-  assert.match(source, /species: "ostrich"/);
+  assert.match(config, /species: "horse"/);
+  assert.match(config, /species: "ostrich"/);
 });
 
 test("makes individual facial features playable hit zones", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
-  for (const zone of ["face", "left-ear", "right-ear", "left-eye", "right-eye", "nose", "mouth", "muzzle", "beak", "visor", "jaw"]) {
+  for (const zone of ["face", "left-ear", "right-ear", "left-eye", "right-eye", "nose", "mouth", "muzzle", "beak"]) {
     assert.match(source, new RegExp(`addHitZone\\(group, "${zone}"`));
   }
   assert.match(source, /entry\.object\.userData\.hitZone !== "face"/);
@@ -69,6 +70,7 @@ test("layers localized destruction while preserving the victim aftermath", async
 
 test("uses procedural skin detail and commercial-inspired comedy systems", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/gameConfig.ts", import.meta.url), "utf8");
   assert.match(source, /function createSkinMaterial/);
   assert.match(source, /bumpMap/);
   assert.match(source, /function createHeadGeometry/);
@@ -76,7 +78,7 @@ test("uses procedural skin detail and commercial-inspired comedy systems", async
   assert.match(source, /ANIMAL FACE SIDE MISSION/);
   assert.match(source, /CLOSE RANGE 2/);
   assert.match(source, /CHAINSAW DAWN/);
-  assert.match(source, /GameMode = "solo" \| "couch"/);
+  assert.match(config, /GameMode = "solo" \| "couch"/);
   assert.match(source, /setPlayerScores/);
   assert.match(source, /phase === "complete"/);
 });

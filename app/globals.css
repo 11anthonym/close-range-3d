@@ -57,6 +57,7 @@ button { color: inherit; }
 }
 
 .phase-playing .game-frame,
+.phase-reloading .game-frame,
 .phase-transition .game-frame { cursor: none; }
 
 .three-stage {
@@ -70,6 +71,7 @@ button { color: inherit; }
 
 .phase-title .three-stage,
 .phase-intro .three-stage,
+.phase-chapter .three-stage,
 .phase-complete .three-stage {
   filter: saturate(0.66) contrast(1.12) brightness(0.58) sepia(0.13) blur(0.55px);
 }
@@ -102,6 +104,7 @@ button { color: inherit; }
 }
 
 .sound-toggle,
+.quality-toggle,
 .skip-button {
   position: absolute;
   z-index: 20;
@@ -121,8 +124,27 @@ button { color: inherit; }
   padding: 1.2cqw;
 }
 
+.quality-toggle {
+  position: absolute;
+  z-index: 20;
+  right: 1.8%;
+  top: 2.4%;
+  padding: 0.65cqw 0.8cqw;
+  border: 1px solid rgba(235, 230, 216, 0.16);
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(235, 230, 216, 0.52);
+  font-size: clamp(6px, 0.75cqw, 9px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.quality-toggle span { color: #bd3c31; }
+
 .sound-toggle:hover,
 .sound-toggle:focus-visible,
+.quality-toggle:hover,
+.quality-toggle:focus-visible,
 .skip-button:hover,
 .skip-button:focus-visible {
   color: #fff;
@@ -414,6 +436,12 @@ button { color: inherit; }
   letter-spacing: 0.12em;
 }
 
+.weapon-smg i { width: 10.4cqw; height: 2.1cqw; clip-path: polygon(0 14%, 92% 0, 100% 28%, 94% 78%, 24% 88%, 16% 100%, 0 88%); }
+.weapon-smg b { left: 4.2cqw; top: 1.75cqw; width: 1.55cqw; height: 3.2cqw; transform: skew(8deg); }
+.weapon-shotgun { width: 20cqw; }
+.weapon-shotgun i { width: 14.8cqw; height: 1.35cqw; clip-path: polygon(0 30%, 90% 0, 100% 42%, 100% 75%, 18% 92%, 0 76%); }
+.weapon-shotgun b { left: 11.7cqw; top: 1.05cqw; width: 3.8cqw; height: 2.2cqw; transform: skew(-28deg); }
+
 .ammo-readout {
   position: absolute;
   right: 3.8%;
@@ -463,6 +491,20 @@ button { color: inherit; }
   box-shadow: 1px 1px 0 #000;
 }
 
+.shells-smg {
+  width: 3.4cqw;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 0.12cqw;
+}
+
+.shells-smg i { height: auto; }
+
+.phase-reloading .crosshair,
+.phase-reloading .aim-readout,
+.phase-reloading .victim-dialogue { opacity: 0.22; }
+
 .fire-prompt {
   position: absolute;
   left: 50%;
@@ -483,6 +525,7 @@ button { color: inherit; }
 
 .title-screen,
 .intro-screen,
+.chapter-screen,
 .complete-screen {
   position: absolute;
   z-index: 9;
@@ -709,6 +752,84 @@ kbd {
 
 .intro-screen .skip-button kbd { margin-left: 0.8cqw; }
 
+.chapter-screen {
+  z-index: 18;
+  align-items: flex-start;
+  overflow: hidden;
+  padding: 8cqw 10cqw;
+  background:
+    linear-gradient(90deg, rgba(6, 7, 7, 0.98), rgba(6, 7, 7, 0.78) 64%, rgba(41, 4, 3, 0.54)),
+    radial-gradient(circle at 78% 32%, rgba(179, 34, 25, 0.2), transparent 30%);
+  text-align: left;
+}
+
+.chapter-static {
+  position: absolute;
+  inset: 0;
+  opacity: 0.13;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(255, 255, 255, 0.18) 3px),
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,.12) 0 1px, transparent 1.5px);
+  background-size: auto, 5px 5px;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.chapter-screen > p {
+  position: relative;
+  margin: 0 0 1.4cqw;
+  color: #c53a30;
+  font-size: clamp(7px, 1cqw, 13px);
+  font-weight: 900;
+  letter-spacing: 0.22em;
+}
+
+.chapter-screen h2 {
+  position: relative;
+  max-width: 73cqw;
+  margin: 0;
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-size: clamp(38px, 7.7cqw, 98px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 0.88;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  text-shadow: 0.3cqw 0.35cqw 0 #1d0202;
+  animation: chapter-in 520ms cubic-bezier(.14,.78,.2,1) both;
+}
+
+.chapter-screen > strong {
+  position: relative;
+  max-width: 60cqw;
+  margin-top: 2.2cqw;
+  color: rgba(238, 232, 219, 0.66);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(10px, 1.35cqw, 18px);
+  line-height: 1.35;
+}
+
+.chapter-loadout {
+  position: relative;
+  display: flex;
+  gap: 1.2cqw;
+  margin-top: 2.8cqw;
+  padding-top: 1cqw;
+  border-top: 1px solid rgba(238, 232, 219, 0.2);
+  color: rgba(238, 232, 219, 0.46);
+  font-size: clamp(6px, 0.82cqw, 11px);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.chapter-loadout b { color: #e4ded0; }
+.chapter-screen .skip-button { right: 3%; bottom: 3%; padding: 1cqw; }
+
+@keyframes chapter-in {
+  from { opacity: 0; transform: translateX(-3cqw) skew(-5deg); }
+  to { opacity: 1; transform: translateX(0) skew(0); }
+}
+
 .complete-screen {
   background: rgba(65, 4, 3, 0.7);
   backdrop-filter: contrast(1.18) saturate(0.7);
@@ -821,6 +942,7 @@ kbd {
 
   .phase-title .three-stage,
   .phase-intro .three-stage,
+  .phase-chapter .three-stage,
   .phase-complete .three-stage {
     filter: saturate(0.7) contrast(1.08) brightness(0.68) sepia(0.1) blur(0.45px);
   }
@@ -831,6 +953,7 @@ kbd {
 @media (max-width: 680px) and (orientation: portrait) {
   .review-stamp { display: none; }
   .sound-toggle { top: 0.6%; }
+  .quality-toggle { top: 0.9%; right: 1%; padding: 1cqw; }
   .title-screen h1 { font-size: 16.5cqw; }
   .tagline { margin-top: 6cqw; }
   .weapon-mark { bottom: 5%; }
@@ -838,6 +961,9 @@ kbd {
   .anatomy-strip { top: 14%; }
   .anatomy-strip > span { display: none; }
   .aim-readout { bottom: 9%; }
+  .chapter-screen { padding: 10cqw 8cqw; }
+  .chapter-screen h2 { max-width: 82cqw; font-size: 8.8cqw; }
+  .chapter-screen > strong { max-width: 76cqw; }
 }
 
 @media (prefers-reduced-motion: reduce) {

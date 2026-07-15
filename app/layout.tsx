@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://11anthonym.github.io/close-range-3d/"),
   title: "Close Range — 3D Browser Game",
   description: "A fan-made 3D browser tribute with open-ended face, ear, eye, nose, and mouth targeting.",
   applicationName: "Close Range",
@@ -10,11 +11,13 @@ export const metadata: Metadata = {
     title: "Close Range — No Cover. No Reloads. No Distance.",
     description: "24 close-range sequences where the face, the ear, and the entire head are open.",
     type: "website",
+    images: [{ url: "og.png", width: 1536, height: 1024, alt: "Close Range — The Entire Head Is Open" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Close Range — 3D Browser Game",
     description: "The face. The ear. The entire head. All open in 24 browser-playable sequences.",
+    images: ["og.png"],
   },
 };
 
