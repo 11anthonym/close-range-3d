@@ -22,6 +22,8 @@ test("server-renders the Close Range game shell", async () => {
   assert.match(html, /PLAY ONLINE NOW/);
   assert.match(html, /24 SEQUENCES/);
   assert.match(html, /SHOOT THE FACE\. OR THE EAR\./);
+  assert.match(html, /THE MOST IMPORTANT GAME OF THE YEAR/);
+  assert.match(html, /UNPARALLELED MULTIPLAYER/);
   assert.match(html, /Fan-made browser tribute/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -44,7 +46,37 @@ test("makes individual facial features playable hit zones", async () => {
     assert.match(source, new RegExp(`addHitZone\\(group, "${zone}"`));
   }
   assert.match(source, /entry\.object\.userData\.hitZone !== "face"/);
-  assert.match(source, /createShards\(runtime, targetRef\.current, shot\.zone/);
+  assert.match(source, /applyLocalizedDamage\(runtime, targetRef\.current, shot\)/);
   assert.match(source, /ZONE_POINTS\[zone\]/);
   assert.match(source, /setSpecialHits/);
+});
+
+test("layers localized destruction while preserving the victim aftermath", async () => {
+  const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
+  assert.match(source, /point: intersection\.point\.toArray/);
+  assert.match(source, /direction: raycaster\.ray\.direction\.toArray/);
+  assert.match(source, /function createMistCloud/);
+  assert.match(source, /function addForegroundSheets/);
+  assert.match(source, /function addWallSplat/);
+  assert.match(source, /child\.userData\.damageVisual/);
+  assert.match(source, /destroysLowerFace && child\.userData\.lowerFace/);
+  assert.match(source, /runtime\.target\.userData\.dead = true/);
+  assert.doesNotMatch(source, /runtime\.target\.visible = false/);
+  assert.match(source, /zone\.endsWith\("eye"\)/);
+  assert.match(source, /new THREE\.Points/);
+  assert.ok(source.indexOf("const tracking = Math.min(1, delta * 11)") < source.indexOf("child.rotation.y = THREE.MathUtils.lerp"));
+});
+
+test("uses procedural skin detail and commercial-inspired comedy systems", async () => {
+  const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
+  assert.match(source, /function createSkinMaterial/);
+  assert.match(source, /bumpMap/);
+  assert.match(source, /function createHeadGeometry/);
+  assert.match(source, /I KNOW WHERE YOUR BROTHER IS/);
+  assert.match(source, /ANIMAL FACE SIDE MISSION/);
+  assert.match(source, /CLOSE RANGE 2/);
+  assert.match(source, /CHAINSAW DAWN/);
+  assert.match(source, /GameMode = "solo" \| "couch"/);
+  assert.match(source, /setPlayerScores/);
+  assert.match(source, /phase === "complete"/);
 });
