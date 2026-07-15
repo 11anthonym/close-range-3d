@@ -775,26 +775,108 @@ function buildTarget(target: Target, quality: QualityProfile) {
   return group;
 }
 
-let makeHumanHeadPromise: Promise<THREE.Group | null> | null = null;
+type ProofHeadAccessor = {
+  bufferView: number;
+  byteOffset?: number;
+  componentType: number;
+  count: number;
+  type: "SCALAR" | "VEC3";
+};
+
+type ProofHeadGlb = {
+  accessors: ProofHeadAccessor[];
+  bufferViews: Array<{ byteOffset?: number; byteStride?: number }>;
+  meshes: Array<{ primitives: Array<{ attributes: { POSITION: number }; indices: number }> }>;
+};
+
+function parseProofHeadGlb(buffer: ArrayBuffer) {
+  const view = new DataView(buffer);
+  if (view.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67 || view.getUint32(4, true) !== 2) {
+    throw new Error("Invalid proof-head GLB header");
+  }
+
+  let jsonBytes: Uint8Array | null = null;
+  let binaryOffset = -1;
+  let binaryLength = 0;
+  for (let offset = 12; offset + 8 <= view.byteLength;) {
+    const length = view.getUint32(offset, true);
+    const type = view.getUint32(offset + 4, true);
+    const start = offset + 8;
+    const end = start + length;
+    if (end > view.byteLength) throw new Error("Truncated proof-head GLB chunk");
+    if (type === 0x4e4f534a) jsonBytes = new Uint8Array(buffer, start, length);
+    if (type === 0x004e4942) {
+      binaryOffset = start;
+      binaryLength = length;
+    }
+    offset = end;
+  }
+  if (!jsonBytes || binaryOffset < 0) throw new Error("Proof-head GLB is missing JSON or geometry data");
+
+  const source = JSON.parse(new TextDecoder().decode(jsonBytes).replace(/[\u0000 ]+$/g, "")) as ProofHeadGlb;
+  const primitive = source.meshes[0]?.primitives[0];
+  const positionAccessor = source.accessors[primitive?.attributes.POSITION];
+  const indexAccessor = source.accessors[primitive?.indices];
+  if (!primitive || !positionAccessor || !indexAccessor || positionAccessor.componentType !== 5126 || positionAccessor.type !== "VEC3") {
+    throw new Error("Proof-head GLB has an unsupported mesh layout");
+  }
+  const positionView = source.bufferViews[positionAccessor.bufferView];
+  const indexView = source.bufferViews[indexAccessor.bufferView];
+  if (!positionView || !indexView || indexAccessor.type !== "SCALAR") {
+    throw new Error("Proof-head GLB has missing buffer views");
+  }
+
+  const positionStride = positionView.byteStride ?? 12;
+  const positionStart = binaryOffset + (positionView.byteOffset ?? 0) + (positionAccessor.byteOffset ?? 0);
+  const positions = new Float32Array(positionAccessor.count * 3);
+  for (let index = 0; index < positionAccessor.count; index += 1) {
+    const sourceOffset = positionStart + index * positionStride;
+    positions[index * 3] = view.getFloat32(sourceOffset, true);
+    positions[index * 3 + 1] = view.getFloat32(sourceOffset + 4, true);
+    positions[index * 3 + 2] = view.getFloat32(sourceOffset + 8, true);
+  }
+
+  const indexStart = binaryOffset + (indexView.byteOffset ?? 0) + (indexAccessor.byteOffset ?? 0);
+  const bytesPerIndex = indexAccessor.componentType === 5123 ? 2 : indexAccessor.componentType === 5125 ? 4 : 0;
+  if (!bytesPerIndex) throw new Error("Proof-head GLB uses unsupported index data");
+  if (positionStart + positionAccessor.count * positionStride > binaryOffset + binaryLength
+    || indexStart + indexAccessor.count * bytesPerIndex > binaryOffset + binaryLength) {
+    throw new Error("Proof-head GLB geometry exceeds its binary chunk");
+  }
+  const indices = indexAccessor.componentType === 5123
+    ? new Uint16Array(indexAccessor.count)
+    : new Uint32Array(indexAccessor.count);
+  for (let index = 0; index < indexAccessor.count; index += 1) {
+    const sourceOffset = indexStart + index * bytesPerIndex;
+    indices[index] = bytesPerIndex === 2 ? view.getUint16(sourceOffset, true) : view.getUint32(sourceOffset, true);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+let makeHumanHeadPromise: Promise<THREE.BufferGeometry | null> | null = null;
 
 function loadMakeHumanHead() {
-  makeHumanHeadPromise ??= Promise.all([
-    import("three/examples/jsm/loaders/GLTFLoader.js"),
-    import("three/examples/jsm/libs/meshopt_decoder.module.js"),
-  ]).then(([{ GLTFLoader }, { MeshoptDecoder }]) => {
-    const loader = new GLTFLoader();
-    loader.setMeshoptDecoder(MeshoptDecoder);
-    const url = new URL("assets/faces/makehuman-head.glb", document.baseURI).href;
-    return loader.loadAsync(url).then((gltf) => gltf.scene);
-  }).catch(() => null);
+  makeHumanHeadPromise ??= fetch(new URL("assets/faces/makehuman-head.glb", document.baseURI))
+    .then((response) => {
+      if (!response.ok) throw new Error(`Proof-head request failed: ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then(parseProofHeadGlb)
+    .catch(() => null);
   return makeHumanHeadPromise;
 }
 
 async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target) {
   if (target.species !== "human") return;
   targetGroup.userData.faceAssetStatus = "loading-makehuman";
-  const template = await loadMakeHumanHead();
-  if (!template || targetGroup.userData.disposed || targetGroup.userData.dead) {
+  const sourceGeometry = await loadMakeHumanHead();
+  if (!sourceGeometry || targetGroup.userData.disposed || targetGroup.userData.dead) {
     if (!targetGroup.userData.disposed) targetGroup.userData.faceAssetStatus = "procedural-fallback";
     return;
   }
@@ -809,46 +891,42 @@ async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target) {
   ];
   const skin = new THREE.Color(target.palette[0]);
   const random = seededRandom(target.detail + 701);
-  template.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const geometry = child.geometry.clone();
-    const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
-    const colors = new Float32Array(positions.count * 3);
-    for (let index = 0; index < positions.count; index += 1) {
-      const warmth = (random() - 0.5) * 0.16;
-      const pore = (random() - 0.5) * 0.09;
-      const shade = skin.clone().offsetHSL(warmth * 0.1, pore, warmth + pore);
-      colors[index * 3] = shade.r;
-      colors[index * 3 + 1] = shade.g;
-      colors[index * 3 + 2] = shade.b;
-    }
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geometry.computeVertexNormals();
-    const face = new THREE.Mesh(
-      geometry,
-      new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        vertexColors: true,
-        roughness: 0.58 + (target.detail % 3) * 0.035,
-        metalness: 0,
-        clearcoat: 0.035,
-        clearcoatRoughness: 0.86,
-        sheen: 0.2,
-        sheenColor: skin.clone().lerp(new THREE.Color(0xff5f50), 0.26),
-        sheenRoughness: 0.8,
-      }),
-    );
-    face.name = `makehuman-head-base-${base + 1}`;
-    face.userData.headVisual = true;
-    face.userData.damageVariant = "intact";
-    face.castShadow = true;
-    face.receiveShadow = true;
-    model.add(face);
-  });
+  const geometry = sourceGeometry.clone();
+  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const colors = new Float32Array(positions.count * 3);
+  for (let index = 0; index < positions.count; index += 1) {
+    const warmth = (random() - 0.5) * 0.16;
+    const pore = (random() - 0.5) * 0.09;
+    const shade = skin.clone().offsetHSL(warmth * 0.1, pore, warmth + pore);
+    colors[index * 3] = shade.r;
+    colors[index * 3 + 1] = shade.g;
+    colors[index * 3 + 2] = shade.b;
+  }
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const face = new THREE.Mesh(
+    geometry,
+    new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.58 + (target.detail % 3) * 0.035,
+      metalness: 0,
+      clearcoat: 0.035,
+      clearcoatRoughness: 0.86,
+      sheen: 0.2,
+      sheenColor: skin.clone().lerp(new THREE.Color(0xff5f50), 0.26),
+      sheenRoughness: 0.8,
+    }),
+  );
+  face.name = `makehuman-head-base-${base + 1}`;
+  face.userData.headVisual = true;
+  face.userData.damageVariant = "intact";
+  face.castShadow = true;
+  face.receiveShadow = true;
+  model.add(face);
   model.scale.set(...baseScale[base]);
   model.position.set(0, -0.565 - (baseScale[base][1] - 0.134) * 6.6, -0.075);
   model.rotation.y = target.detail % 2 ? -0.012 : 0.012;
-  model.userData.faceAsset = "makehuman-cc0-meshopt";
+  model.userData.faceAsset = "makehuman-cc0-runtime-glb";
   targetGroup.children.forEach((child) => {
     if (child.userData.proceduralFace) child.visible = false;
   });

@@ -65,20 +65,24 @@ test("ships both material sizes and records their license provenance", async () 
   assert.match(ledger, /CC0/);
 });
 
-test("loads a compressed MakeHuman proof head with four procedural fallbacks", async () => {
+test("loads a server-safe MakeHuman proof head with four procedural fallbacks", async () => {
   const [game, ledger] = await Promise.all([
     readFile(gameUrl, "utf8"),
     readFile(new URL("../docs/ASSET_LICENSES.md", import.meta.url), "utf8"),
   ]);
-  const head = new URL("../public/assets/faces/makehuman-head.glb", import.meta.url);
-  await access(head);
-  assert.ok((await stat(head)).size > 20_000);
-  assert.match(game, /import\("three\/examples\/jsm\/libs\/meshopt_decoder\.module\.js"\)/);
-  assert.match(game, /import\("three\/examples\/jsm\/loaders\/GLTFLoader\.js"\)/);
-  assert.match(game, /loader\.setMeshoptDecoder\(MeshoptDecoder\)/);
+  const runtimeHead = new URL("../public/assets/faces/makehuman-head.glb", import.meta.url);
+  const compressedHead = new URL("../public/assets/faces/makehuman-head-meshopt.glb", import.meta.url);
+  await Promise.all([access(runtimeHead), access(compressedHead)]);
+  assert.ok((await stat(runtimeHead)).size > 100_000);
+  assert.ok((await stat(compressedHead)).size > 20_000);
+  assert.match(game, /function parseProofHeadGlb/);
+  assert.match(game, /new DataView\(buffer\)/);
+  assert.match(game, /new THREE\.BufferGeometry\(\)/);
+  assert.doesNotMatch(game, /GLTFLoader|MeshoptDecoder/);
   assert.match(game, /function hydrateMakeHumanHead/);
   assert.match(game, /const base = target\.detail % 4/);
   assert.match(game, /new THREE\.SphereGeometry\(1, 112, 88\)/);
   assert.match(game, /faceAssetStatus = "procedural-fallback"/);
   assert.match(ledger, /MakeHuman core base mesh head subset/);
+  assert.match(ledger, /makehuman-head-meshopt\.glb/);
 });
