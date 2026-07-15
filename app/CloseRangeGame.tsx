@@ -47,6 +47,7 @@ const INTRO = [
   "YOUR PAST IS CLASSIFIED.",
   "YOUR BROTHER IS MISSING.",
   "THERE IS ONLY ONE LEAD — AND IT IS VERY CLOSE.",
+  "THE ENTIRE FACE IS OPEN.",
 ];
 
 const PRAISE = [
@@ -65,7 +66,7 @@ type Runtime = {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   target: THREE.Group | null;
-  hitTarget: THREE.Mesh | null;
+  hitTargets: THREE.Mesh[];
   environment: THREE.Group | null;
   gun: THREE.Group;
   muzzle: THREE.PointLight;
@@ -78,8 +79,74 @@ type Runtime = {
 };
 
 type Aim = { x: number; y: number };
-type Shot = { tick: number; hit: boolean };
-type HitTest = () => boolean;
+type HitZone =
+  | "face"
+  | "left-ear"
+  | "right-ear"
+  | "left-eye"
+  | "right-eye"
+  | "nose"
+  | "mouth"
+  | "muzzle"
+  | "beak"
+  | "visor"
+  | "jaw";
+type HitResult = { hit: boolean; zone: HitZone | null };
+type Shot = { tick: number; hit: boolean; zone: HitZone | null };
+type HitTest = () => HitResult;
+
+const ZONE_POINTS: Record<HitZone, number> = {
+  face: 1000,
+  "left-ear": 1850,
+  "right-ear": 1850,
+  "left-eye": 2250,
+  "right-eye": 2250,
+  nose: 1700,
+  mouth: 1550,
+  muzzle: 1750,
+  beak: 1900,
+  visor: 2100,
+  jaw: 1600,
+};
+
+const ZONE_FEEDBACK: Record<HitZone, string> = {
+  face: "EXCELLENT",
+  "left-ear": "THE EAR!",
+  "right-ear": "OTHER EAR!",
+  "left-eye": "EYE CONTACT!",
+  "right-eye": "EYE CONTACT!",
+  nose: "NOSE FIRST!",
+  mouth: "SPEECHLESS!",
+  muzzle: "MUZZLED!",
+  beak: "DE-BEAKED!",
+  visor: "OPTICS DOWN!",
+  jaw: "JAW-DROPPING!",
+};
+
+function zoneLabel(zone: HitZone, species: Species) {
+  if (zone === "left-ear") return species === "robot" ? "LEFT AUDIO PORT" : "LEFT EAR";
+  if (zone === "right-ear") return species === "robot" ? "RIGHT AUDIO PORT" : "RIGHT EAR";
+  if (zone === "left-eye") return "LEFT EYE";
+  if (zone === "right-eye") return "RIGHT EYE";
+  if (zone === "muzzle") return "MUZZLE";
+  if (zone === "beak") return "BEAK";
+  if (zone === "visor") return "OPTICAL VISOR";
+  return zone.toUpperCase();
+}
+
+function zoneCategory(zone: HitZone) {
+  if (zone.endsWith("ear")) return "EAR";
+  if (zone.endsWith("eye")) return "EYE";
+  if (zone === "visor") return "EYE";
+  return zone.toUpperCase();
+}
+
+function availableZoneCategories(species: Species) {
+  if (species === "human") return ["FACE", "EAR", "EYE", "NOSE", "MOUTH"];
+  if (species === "horse") return ["FACE", "EAR", "EYE", "MUZZLE"];
+  if (species === "ostrich") return ["FACE", "EYE", "BEAK"];
+  return ["FACE", "AUDIO PORT", "OPTICAL VISOR", "JAW"];
+}
 
 function material(color: number, roughness = 0.72, metalness = 0.05) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
@@ -132,6 +199,24 @@ function addEllipsoid(
   item.position.set(...position);
   group.add(item);
   return item;
+}
+
+function addHitZone(
+  group: THREE.Group,
+  zone: HitZone,
+  position: [number, number, number],
+  scale: [number, number, number],
+) {
+  const target = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 22, 16),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
+  );
+  target.name = `hit-zone:${zone}`;
+  target.userData.hitZone = zone;
+  target.position.set(...position);
+  target.scale.set(...scale);
+  group.add(target);
+  return target;
 }
 
 function buildHuman(target: Target) {
@@ -339,15 +424,33 @@ function buildTarget(target: Target) {
       : target.species === "robot"
         ? buildRobot(target)
         : buildHuman(target);
-  const hitRadius = target.species === "ostrich" ? 0.31 : target.species === "horse" ? 0.42 : target.species === "robot" ? 0.42 : 0.39;
-  const hitY = target.species === "ostrich" ? 0.46 : 0.34;
-  const hitTarget = new THREE.Mesh(
-    new THREE.SphereGeometry(hitRadius, 30, 22),
-    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
-  );
-  hitTarget.name = "head-hit-target";
-  hitTarget.position.set(0, hitY, 0.03);
-  group.add(hitTarget);
+  if (target.species === "human") {
+    addHitZone(group, "face", [0, 0.34, 0.02], [0.34, 0.42, 0.31]);
+    addHitZone(group, "left-ear", [-0.34, 0.32, 0.03], [0.07, 0.11, 0.065]);
+    addHitZone(group, "right-ear", [0.34, 0.32, 0.03], [0.07, 0.11, 0.065]);
+    addHitZone(group, "left-eye", [-0.12, 0.39, 0.315], [0.072, 0.055, 0.045]);
+    addHitZone(group, "right-eye", [0.12, 0.39, 0.315], [0.072, 0.055, 0.045]);
+    addHitZone(group, "nose", [0, 0.26, 0.345], [0.075, 0.105, 0.07]);
+    addHitZone(group, "mouth", [0, 0.115, 0.315], [0.12, 0.055, 0.055]);
+  } else if (target.species === "horse") {
+    addHitZone(group, "face", [0, 0.34, 0.03], [0.29, 0.46, 0.38]);
+    addHitZone(group, "left-ear", [-0.16, 0.72, -0.02], [0.1, 0.18, 0.09]);
+    addHitZone(group, "right-ear", [0.16, 0.72, -0.02], [0.1, 0.18, 0.09]);
+    addHitZone(group, "left-eye", [-0.16, 0.39, 0.345], [0.075, 0.065, 0.055]);
+    addHitZone(group, "right-eye", [0.16, 0.39, 0.345], [0.075, 0.065, 0.055]);
+    addHitZone(group, "muzzle", [0, 0.15, 0.36], [0.22, 0.15, 0.16]);
+  } else if (target.species === "ostrich") {
+    addHitZone(group, "face", [0, 0.47, 0.01], [0.2, 0.27, 0.22]);
+    addHitZone(group, "left-eye", [-0.1, 0.53, 0.21], [0.065, 0.06, 0.05]);
+    addHitZone(group, "right-eye", [0.1, 0.53, 0.21], [0.065, 0.06, 0.05]);
+    addHitZone(group, "beak", [0, 0.4, 0.36], [0.14, 0.1, 0.2]);
+  } else {
+    addHitZone(group, "face", [0, 0.32, 0.03], [0.35, 0.42, 0.31]);
+    addHitZone(group, "left-ear", [-0.34, 0.31, 0.02], [0.09, 0.17, 0.09]);
+    addHitZone(group, "right-ear", [0.34, 0.31, 0.02], [0.09, 0.17, 0.09]);
+    addHitZone(group, "visor", [0, 0.42, 0.3], [0.23, 0.08, 0.055]);
+    addHitZone(group, "jaw", [0, 0.08, 0.3], [0.23, 0.1, 0.065]);
+  }
   group.position.set(0, -0.02, -1.46);
   group.rotation.y = target.detail % 2 ? -0.035 : 0.035;
   return group;
@@ -525,23 +628,30 @@ function buildGun() {
   return gun;
 }
 
-function createShards(runtime: Runtime, target: Target) {
-  const origin = new THREE.Vector3(0, 0.31, -1.42);
+function createShards(runtime: Runtime, target: Target, zone: HitZone) {
+  runtime.scene.updateMatrixWorld(true);
+  const zoneTarget = runtime.hitTargets.find((item) => item.userData.hitZone === zone);
+  const origin = zoneTarget?.getWorldPosition(new THREE.Vector3()) ?? new THREE.Vector3(0, 0.31, -1.42);
   const colors = target.species === "robot"
-    ? [0x242a2d, 0x737a7d, 0xb7241f]
-    : [target.palette[0], 0x6e1513, 0xb9271f, target.palette[1]];
-  const count = runtime.reducedMotion ? 16 : 34;
+    ? [0x242a2d, 0x737a7d, 0xb7241f, 0xe1b14a]
+    : zone.endsWith("eye")
+      ? [0xe5dfd2, 0x33271d, 0x6e1513, target.palette[0]]
+      : [target.palette[0], 0x6e1513, 0xb9271f, target.palette[1]];
+  const count = runtime.reducedMotion ? 16 : zone === "face" ? 36 : 29;
+  const spreadX = zone === "face" ? 0.35 : 0.16;
+  const spreadY = zone === "face" ? 0.5 : 0.22;
+  const sideForce = zone === "left-ear" ? -0.65 : zone === "right-ear" ? 0.65 : 0;
   for (let i = 0; i < count; i += 1) {
     const size = 0.025 + Math.random() * 0.07;
     const geometry = i % 3 === 0
       ? new THREE.TetrahedronGeometry(size * 0.82, 0)
       : new THREE.SphereGeometry(size * 0.58, 10, 7);
     const shardMesh = mesh(geometry, colors[i % colors.length], 0.55, target.species === "robot" ? 0.5 : 0);
-    shardMesh.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.2));
+    shardMesh.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * spreadX, (Math.random() - 0.5) * spreadY, (Math.random() - 0.5) * 0.14));
     runtime.scene.add(shardMesh);
     runtime.shards.push({
       mesh: shardMesh,
-      velocity: new THREE.Vector3((Math.random() - 0.5) * 1.9, 0.2 + Math.random() * 1.5, 0.8 + Math.random() * 1.7),
+      velocity: new THREE.Vector3(sideForce + (Math.random() - 0.5) * 1.7, 0.2 + Math.random() * 1.5, 0.8 + Math.random() * 1.7),
       spin: new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7),
       life: 1,
     });
@@ -617,17 +727,21 @@ function ThreeStage({
     gun.add(muzzleMesh);
 
     const runtime: Runtime = {
-      scene, camera, renderer, target: null, hitTarget: null, environment: null, gun, muzzle, muzzleMesh,
+      scene, camera, renderer, target: null, hitTargets: [], environment: null, gun, muzzle, muzzleMesh,
       shards: [], recoil: 0, shotFlash: 0, frame: 0, reducedMotion,
     };
     runtimeRef.current = runtime;
     const raycaster = new THREE.Raycaster();
     const aimVector = new THREE.Vector2();
     hitTestRef.current = () => {
-      if (!runtime.hitTarget || !runtime.target?.visible) return false;
+      if (runtime.hitTargets.length === 0 || !runtime.target?.visible) return { hit: false, zone: null };
       aimVector.set(aimRef.current.x, aimRef.current.y);
       raycaster.setFromCamera(aimVector, camera);
-      return raycaster.intersectObject(runtime.hitTarget, false).length > 0;
+      const intersections = raycaster.intersectObjects(runtime.hitTargets, false);
+      if (intersections.length === 0) return { hit: false, zone: null };
+      const preciseHit = intersections.find((entry) => entry.object.userData.hitZone !== "face");
+      const zone = (preciseHit ?? intersections[0]).object.userData.hitZone as HitZone;
+      return { hit: true, zone };
     };
 
     const resize = () => {
@@ -712,7 +826,7 @@ function ThreeStage({
     runtime.environment = buildEnvironment(target, runtime.scene);
     runtime.scene.add(runtime.environment);
     runtime.target = buildTarget(target);
-    runtime.hitTarget = runtime.target.getObjectByName("head-hit-target") as THREE.Mesh;
+    runtime.hitTargets = runtime.target.children.filter((child): child is THREE.Mesh => child instanceof THREE.Mesh && child.name.startsWith("hit-zone:"));
     runtime.scene.add(runtime.target);
   }, [target, reducedMotion]);
 
@@ -724,7 +838,7 @@ function ThreeStage({
     runtime.shotFlash = 1;
     if (shot.hit) {
       runtime.target.visible = false;
-      createShards(runtime, targetRef.current);
+      createShards(runtime, targetRef.current, shot.zone ?? "face");
     } else {
       createMissSparks(runtime, aimRef.current);
     }
@@ -789,18 +903,22 @@ export default function CloseRangeGame() {
   const [phase, setPhase] = useState<Phase>("title");
   const [targetIndex, setTargetIndex] = useState(0);
   const [introLine, setIntroLine] = useState(0);
-  const [shot, setShot] = useState<Shot>({ tick: 0, hit: false });
+  const [shot, setShot] = useState<Shot>({ tick: 0, hit: false, zone: null });
   const [feedback, setFeedback] = useState("");
+  const [feedbackDetail, setFeedbackDetail] = useState("");
   const [feedbackKind, setFeedbackKind] = useState<"hit" | "miss">("hit");
   const [feedbackTick, setFeedbackTick] = useState(0);
   const [score, setScore] = useState(0);
   const [ammo, setAmmo] = useState(8);
   const [shotsFired, setShotsFired] = useState(0);
+  const [specialHits, setSpecialHits] = useState(0);
+  const [partsFound, setPartsFound] = useState<string[]>([]);
   const [muted, setMuted] = useState(false);
   const [reducedMotion] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const lockedRef = useRef(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const crosshairRef = useRef<HTMLDivElement>(null);
+  const aimReadoutRef = useRef<HTMLDivElement>(null);
   const aimRef = useRef<Aim>({ x: 0, y: 0 });
   const hitTestRef = useRef<HitTest | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -813,8 +931,11 @@ export default function CloseRangeGame() {
     setScore(0);
     setAmmo(8);
     setShotsFired(0);
+    setSpecialHits(0);
+    setPartsFound([]);
     setIntroLine(0);
     setFeedback("");
+    setFeedbackDetail("");
     setFeedbackKind("hit");
     aimRef.current = { x: 0, y: 0 };
     if (crosshairRef.current) {
@@ -840,23 +961,34 @@ export default function CloseRangeGame() {
   const fire = useCallback(() => {
     if (phase !== "playing" || lockedRef.current) return;
     playShot();
-    const hit = hitTestRef.current?.() ?? true;
-    setShot((value) => ({ tick: value.tick + 1, hit }));
+    const hitResult = hitTestRef.current?.() ?? { hit: true, zone: "face" as HitZone };
+    const hit = hitResult.hit;
+    const zone = hitResult.zone ?? "face";
+    setShot((value) => ({ tick: value.tick + 1, hit, zone: hit ? zone : null }));
     setShotsFired((value) => value + 1);
     setAmmo((value) => value <= 1 ? 8 : value - 1);
     if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
     if (!hit) {
       setFeedbackKind("miss");
       setFeedback("CLOSER.");
+      setFeedbackDetail("NO FACIAL CONTACT");
       setFeedbackTick((value) => value + 1);
-      feedbackTimerRef.current = window.setTimeout(() => setFeedback(""), reducedMotion ? 260 : 620);
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedback("");
+        setFeedbackDetail("");
+      }, reducedMotion ? 260 : 620);
       return;
     }
     lockedRef.current = true;
     setFeedbackKind("hit");
-    setFeedback(PRAISE[targetIndex % PRAISE.length]);
+    const category = zoneCategory(zone);
+    const points = ZONE_POINTS[zone] + targetIndex * 125;
+    setFeedback(zone === "face" ? PRAISE[targetIndex % PRAISE.length] : ZONE_FEEDBACK[zone]);
+    setFeedbackDetail(`+${points.toLocaleString()} // ${zoneLabel(zone, target.species)}`);
+    setPartsFound((value) => value.includes(category) ? value : [...value, category]);
+    if (zone !== "face") setSpecialHits((value) => value + 1);
     setFeedbackTick((value) => value + 1);
-    setScore((value) => value + 1000 + targetIndex * 125);
+    setScore((value) => value + points);
     setPhase("transition");
     window.setTimeout(() => {
       if (targetIndex >= TARGETS.length - 1) {
@@ -864,11 +996,12 @@ export default function CloseRangeGame() {
       } else {
         setTargetIndex((value) => value + 1);
         setFeedback("");
+        setFeedbackDetail("");
         lockedRef.current = false;
         setPhase("playing");
       }
     }, reducedMotion ? 520 : 1050);
-  }, [phase, playShot, reducedMotion, targetIndex]);
+  }, [phase, playShot, reducedMotion, target, targetIndex]);
 
   useEffect(() => () => {
     if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
@@ -908,7 +1041,14 @@ export default function CloseRangeGame() {
       crosshairRef.current.style.left = `${localX}px`;
       crosshairRef.current.style.top = `${localY}px`;
     }
-  }, []);
+    const result = hitTestRef.current?.();
+    crosshairRef.current?.classList.toggle("is-on-target", Boolean(result?.hit));
+    if (aimReadoutRef.current) {
+      aimReadoutRef.current.dataset.active = result?.hit ? "true" : "false";
+      const label = aimReadoutRef.current.querySelector("strong");
+      if (label) label.textContent = result?.zone ? zoneLabel(result.zone, target.species) : "NO FACE";
+    }
+  }, [target.species]);
 
   const handleStagePointer = (event: React.PointerEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
@@ -941,11 +1081,19 @@ export default function CloseRangeGame() {
               role="status"
               aria-live="polite"
             >{feedback}</div>
+            <div className={`impact-detail ${feedbackDetail ? "is-visible" : ""}`}>{feedbackDetail}</div>
             <div className="score-counter" aria-label={`Score ${score}`}>{score}</div>
             <div className="location-slate" key={targetIndex}>
               <span>{String(targetIndex + 1).padStart(2, "0")} / 24</span>
               <strong>{target.codename}</strong>
               <small>{target.location}</small>
+            </div>
+            <div className="anatomy-strip" aria-label="Available facial targets">
+              <span>THE ENTIRE HEAD IS OPEN</span>
+              <div>{availableZoneCategories(target.species).map((zone) => <i key={zone}>{zone}</i>)}</div>
+            </div>
+            <div className="aim-readout" ref={aimReadoutRef} data-active="false">
+              <span>AIM AREA</span><strong>FACE IS OPEN</strong>
             </div>
             <div className="weapon-mark" aria-label={target.weapon}>
               <i /><b /><span>{target.weapon}</span>
@@ -965,8 +1113,9 @@ export default function CloseRangeGame() {
             <div className="review-stamp review-one"><strong>“INCREDIBLE”</strong><small>OGN.COM</small></div>
             <div className="review-stamp review-two"><strong>“BREATHTAKING”</strong><small>GAME INSIDER</small></div>
             <p className="tagline">START THE EPIC JOURNEY NOW!</p>
+            <p className="open-face-copy">SHOOT THE FACE. OR THE EAR. THE ENTIRE HEAD IS OPEN.</p>
             <button className="primary-button" type="button" onClick={begin}><span>PLAY ONLINE NOW</span><kbd>SPACE</kbd></button>
-            <div className="title-meta"><span>24 SEQUENCES</span><span>FREE AIM</span><span>POINT-BLANK 3D</span></div>
+            <div className="title-meta"><span>24 SEQUENCES</span><span>OPEN-ENDED FACIAL COMBAT</span><span>POINT-BLANK 3D</span></div>
             <p className="attribution">Fan-made browser tribute. Original concept by The Onion. No affiliation.</p>
           </section>
         )}
@@ -985,12 +1134,14 @@ export default function CloseRangeGame() {
           <section className="complete-screen">
             <p className="eyebrow">CAMPAIGN COMPLETE</p>
             <h2>CONGRATULATIONS.</h2>
-            <p className="complete-copy">You have experienced the full emotional and mechanical range of modern combat.</p>
-            <div className="result-grid">
-              <div><small>FACES</small><strong>24 / 24</strong></div>
+            <p className="complete-copy">You have explored the full open-ended geography of the human face.</p>
+            <div className="result-grid result-grid-four">
+              <div><small>SEQUENCES</small><strong>24 / 24</strong></div>
               <div><small>SHOTS</small><strong>{shotsFired}</strong></div>
-              <div><small>RATING</small><strong>{rank}</strong></div>
+              <div><small>SPECIAL HITS</small><strong>{specialHits}</strong></div>
+              <div><small>PARTS FOUND</small><strong>{partsFound.length}</strong></div>
             </div>
+            <p className="result-rating">RATING // <strong>{rank}</strong></p>
             <button className="primary-button" type="button" onClick={begin}><span>PLAY AGAIN</span><kbd>SPACE</kbd></button>
           </section>
         )}

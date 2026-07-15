@@ -179,6 +179,16 @@ button { color: inherit; }
   box-shadow: 0 0 0 1px #240503;
 }
 
+.crosshair.is-on-target {
+  border-color: #f2eee2;
+  box-shadow: 0 0 0 max(1px, 0.12cqw) #7f0b07, inset 0 0 0 1px rgba(0, 0, 0, 0.52), 0 0 1.1cqw rgba(184, 22, 15, 0.5);
+}
+
+.crosshair.is-on-target b {
+  background: #fff7e7;
+  box-shadow: 0 0 0 1px #9b110b, 0 0 0.6cqw #d8291f;
+}
+
 .praise {
   position: absolute;
   left: 5.4%;
@@ -214,6 +224,25 @@ button { color: inherit; }
 }
 
 .praise-miss.is-visible { animation: miss-in 620ms ease-out both; }
+
+.impact-detail {
+  position: absolute;
+  left: 6.2%;
+  top: 24.5%;
+  color: rgba(240, 235, 221, 0.8);
+  font-size: clamp(6px, 1cqw, 13px);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  opacity: 0;
+}
+
+.impact-detail.is-visible { animation: detail-in 850ms ease-out both; }
+
+@keyframes detail-in {
+  0% { opacity: 0; transform: translateX(-1.2cqw); }
+  18%, 70% { opacity: 0.86; transform: translateX(0); }
+  100% { opacity: 0; transform: translateY(-0.5cqw); }
+}
 
 @keyframes praise-in {
   0% { opacity: 0; transform: translate(-4cqw, -1cqw) rotate(-6deg) scale(0.38); }
@@ -267,6 +296,72 @@ button { color: inherit; }
   font-size: clamp(16px, 2.8cqw, 36px);
   font-weight: 400;
   letter-spacing: 0.03em;
+}
+
+.anatomy-strip {
+  position: absolute;
+  right: 4%;
+  top: 12.5%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45cqw;
+  color: rgba(235, 230, 217, 0.46);
+  text-align: right;
+}
+
+.anatomy-strip > span {
+  font-size: clamp(5px, 0.72cqw, 9px);
+  font-weight: 900;
+  letter-spacing: 0.17em;
+}
+
+.anatomy-strip div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45cqw;
+}
+
+.anatomy-strip i {
+  padding: 0.25cqw 0.42cqw;
+  border: 1px solid rgba(235, 230, 217, 0.18);
+  color: rgba(235, 230, 217, 0.58);
+  font-size: clamp(4px, 0.58cqw, 8px);
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.aim-readout {
+  position: absolute;
+  left: 50%;
+  bottom: 7.4%;
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  padding: 0.42cqw 0.7cqw;
+  border: 1px solid rgba(237, 232, 219, 0.13);
+  background: rgba(0, 0, 0, 0.34);
+  color: rgba(237, 232, 219, 0.34);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.aim-readout span {
+  font-size: clamp(4px, 0.58cqw, 8px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.aim-readout strong {
+  font-size: clamp(6px, 0.82cqw, 11px);
+  letter-spacing: 0.1em;
+}
+
+.aim-readout[data-active="true"] {
+  border-color: rgba(210, 39, 29, 0.5);
+  color: rgba(245, 239, 225, 0.86);
+  box-shadow: inset 0 0 1cqw rgba(133, 12, 8, 0.2);
 }
 
 @keyframes slate {
@@ -447,11 +542,21 @@ button { color: inherit; }
 }
 
 .tagline {
-  margin: 5.4cqw 0 1.8cqw;
+  margin: 4.7cqw 0 0.6cqw;
   color: rgba(238, 233, 220, 0.86);
   font-size: clamp(7px, 1.18cqw, 15px);
   font-weight: 900;
   letter-spacing: 0.22em;
+  text-shadow: 1px 2px 2px #000;
+}
+
+.open-face-copy {
+  margin: 0 0 1.4cqw;
+  color: rgba(237, 231, 217, 0.63);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(7px, 1cqw, 13px);
+  font-style: italic;
+  letter-spacing: 0.06em;
   text-shadow: 1px 2px 2px #000;
 }
 
@@ -637,6 +742,11 @@ kbd {
   background: rgba(0, 0, 0, 0.28);
 }
 
+.result-grid-four {
+  width: min(69cqw, 780px);
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .result-grid div {
   min-height: 6.6cqw;
   display: flex;
@@ -650,6 +760,16 @@ kbd {
 .result-grid div + div { border-left: 1px solid rgba(235, 229, 215, 0.22); }
 .result-grid small { color: rgba(235, 229, 215, 0.55); font-size: clamp(5px, 0.72cqw, 9px); font-weight: 900; letter-spacing: 0.14em; }
 .result-grid strong { font-size: clamp(10px, 1.6cqw, 21px); letter-spacing: 0.06em; }
+
+.result-rating {
+  margin: -0.8cqw 0 1.8cqw;
+  color: rgba(236, 230, 217, 0.62);
+  font-size: clamp(6px, 0.85cqw, 11px);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.result-rating strong { color: #fff8e8; }
 
 .impact-flash {
   z-index: 6;
@@ -675,6 +795,9 @@ kbd {
   .tagline { margin-top: 6cqw; }
   .weapon-mark { bottom: 5%; }
   .ammo-readout { bottom: 4%; }
+  .anatomy-strip { top: 14%; }
+  .anatomy-strip > span { display: none; }
+  .aim-readout { bottom: 9%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

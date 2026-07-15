@@ -11,6 +11,8 @@ Once GitHub Pages is enabled, the browser build is available at:
 
 - Move the pointer to aim. Click, tap, or press `Space` to fire.
 - Shots outside the target's head miss; move in close and line up the reticle.
+- The face, ears, eyes, nose, mouth, animal features, and robot optics are separate
+  scoring targets with localized impact effects.
 - Complete all 24 point-blank encounters.
 - Sound is generated in the browser; no external media assets are used.
 
