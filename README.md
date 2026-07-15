@@ -1,15 +1,16 @@
 # Close Range 3D
 
 A playable, fan-made browser restoration of The Onion's 2009 *Close Range*
-parody game. This version preserves the original one-button joke as a real-time
-3D campaign built with React and Three.js.
+parody game. This version preserves the original point-blank joke as a real-time
+3D campaign with free aiming, built with React and Three.js.
 
 Once GitHub Pages is enabled, the browser build is available at:
 [11anthonym.github.io/close-range-3d](https://11anthonym.github.io/close-range-3d/)
 
 ## Play
 
-- Click, tap, or press `Space` to fire.
+- Move the pointer to aim. Click, tap, or press `Space` to fire.
+- Shots outside the target's head miss; move in close and line up the reticle.
 - Complete all 24 point-blank encounters.
 - Sound is generated in the browser; no external media assets are used.
 
