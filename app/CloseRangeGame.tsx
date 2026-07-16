@@ -682,12 +682,12 @@ function addDamageAftermathRig(group: THREE.Group, species: Species) {
 function addLocalizedDamageVariants(group: THREE.Group, species: Species) {
   const variants: Partial<Record<HitZone, { position: [number, number, number]; scale: [number, number] }>> = species === "human"
     ? {
-        "left-ear": { position: [-0.345, 0.32, 0.055], scale: [0.052, 0.095] },
-        "right-ear": { position: [0.345, 0.32, 0.055], scale: [0.052, 0.095] },
-        "left-eye": { position: [-0.12, 0.39, 0.337], scale: [0.072, 0.052] },
-        "right-eye": { position: [0.12, 0.39, 0.337], scale: [0.072, 0.052] },
-        nose: { position: [0, 0.265, 0.374], scale: [0.064, 0.092] },
-        mouth: { position: [0, 0.115, 0.343], scale: [0.12, 0.06] },
+        "left-ear": { position: [-0.25, 0.32, 0.36], scale: [0.052, 0.095] },
+        "right-ear": { position: [0.25, 0.32, 0.36], scale: [0.052, 0.095] },
+        "left-eye": { position: [-0.105, 0.39, 0.37], scale: [0.064, 0.05] },
+        "right-eye": { position: [0.105, 0.39, 0.37], scale: [0.064, 0.05] },
+        nose: { position: [0, 0.265, 0.395], scale: [0.064, 0.092] },
+        mouth: { position: [0, 0.18, 0.37], scale: [0.12, 0.06] },
       }
     : species === "horse"
       ? {
@@ -750,13 +750,13 @@ function buildTarget(target: Target, quality: QualityProfile) {
   addDamageAftermathRig(group, target.species);
   addLocalizedDamageVariants(group, target.species);
   if (target.species === "human") {
-    addHitZone(group, "face", [0, 0.34, 0.02], [0.34, 0.42, 0.31]);
-    addHitZone(group, "left-ear", [-0.34, 0.32, 0.03], [0.07, 0.11, 0.065]);
-    addHitZone(group, "right-ear", [0.34, 0.32, 0.03], [0.07, 0.11, 0.065]);
-    addHitZone(group, "left-eye", [-0.12, 0.39, 0.315], [0.072, 0.055, 0.045]);
-    addHitZone(group, "right-eye", [0.12, 0.39, 0.315], [0.072, 0.055, 0.045]);
-    addHitZone(group, "nose", [0, 0.26, 0.345], [0.075, 0.105, 0.07]);
-    addHitZone(group, "mouth", [0, 0.115, 0.315], [0.12, 0.055, 0.055]);
+    addHitZone(group, "face", [0, 0.34, 0.04], [0.32, 0.4, 0.3]);
+    addHitZone(group, "left-ear", [-0.25, 0.32, 0.03], [0.055, 0.11, 0.055]);
+    addHitZone(group, "right-ear", [0.25, 0.32, 0.03], [0.055, 0.11, 0.055]);
+    addHitZone(group, "left-eye", [-0.105, 0.39, 0.325], [0.06, 0.05, 0.04]);
+    addHitZone(group, "right-eye", [0.105, 0.39, 0.325], [0.06, 0.05, 0.04]);
+    addHitZone(group, "nose", [0, 0.265, 0.35], [0.07, 0.1, 0.06]);
+    addHitZone(group, "mouth", [0, 0.18, 0.33], [0.12, 0.06, 0.05]);
   } else if (target.species === "horse") {
     addHitZone(group, "face", [0, 0.34, 0.03], [0.29, 0.46, 0.38]);
     addHitZone(group, "left-ear", [-0.16, 0.72, -0.02], [0.1, 0.18, 0.09]);
@@ -780,13 +780,13 @@ type ProofHeadAccessor = {
   byteOffset?: number;
   componentType: number;
   count: number;
-  type: "SCALAR" | "VEC3";
+  type: "SCALAR" | "VEC2" | "VEC3";
 };
 
 type ProofHeadGlb = {
   accessors: ProofHeadAccessor[];
   bufferViews: Array<{ byteOffset?: number; byteStride?: number }>;
-  meshes: Array<{ primitives: Array<{ attributes: { POSITION: number }; indices: number }> }>;
+  meshes: Array<{ primitives: Array<{ attributes: { POSITION: number; TEXCOORD_0?: number }; indices: number }> }>;
 };
 
 function parseProofHeadGlb(buffer: ArrayBuffer) {
@@ -816,13 +816,18 @@ function parseProofHeadGlb(buffer: ArrayBuffer) {
   const source = JSON.parse(new TextDecoder().decode(jsonBytes).replace(/[\u0000 ]+$/g, "")) as ProofHeadGlb;
   const primitive = source.meshes[0]?.primitives[0];
   const positionAccessor = source.accessors[primitive?.attributes.POSITION];
+  const textureAccessor = primitive?.attributes.TEXCOORD_0 === undefined
+    ? undefined
+    : source.accessors[primitive.attributes.TEXCOORD_0];
   const indexAccessor = source.accessors[primitive?.indices];
   if (!primitive || !positionAccessor || !indexAccessor || positionAccessor.componentType !== 5126 || positionAccessor.type !== "VEC3") {
     throw new Error("Proof-head GLB has an unsupported mesh layout");
   }
   const positionView = source.bufferViews[positionAccessor.bufferView];
+  const textureView = textureAccessor ? source.bufferViews[textureAccessor.bufferView] : undefined;
   const indexView = source.bufferViews[indexAccessor.bufferView];
-  if (!positionView || !indexView || indexAccessor.type !== "SCALAR") {
+  if (!positionView || !indexView || indexAccessor.type !== "SCALAR"
+    || (textureAccessor && (!textureView || textureAccessor.componentType !== 5126 || textureAccessor.type !== "VEC2"))) {
     throw new Error("Proof-head GLB has missing buffer views");
   }
 
@@ -834,6 +839,21 @@ function parseProofHeadGlb(buffer: ArrayBuffer) {
     positions[index * 3] = view.getFloat32(sourceOffset, true);
     positions[index * 3 + 1] = view.getFloat32(sourceOffset + 4, true);
     positions[index * 3 + 2] = view.getFloat32(sourceOffset + 8, true);
+  }
+
+  let textureCoordinates: Float32Array | null = null;
+  if (textureAccessor && textureView) {
+    const textureStride = textureView.byteStride ?? 8;
+    const textureStart = binaryOffset + (textureView.byteOffset ?? 0) + (textureAccessor.byteOffset ?? 0);
+    if (textureStart + textureAccessor.count * textureStride > binaryOffset + binaryLength) {
+      throw new Error("Proof-head texture coordinates exceed the binary chunk");
+    }
+    textureCoordinates = new Float32Array(textureAccessor.count * 2);
+    for (let index = 0; index < textureAccessor.count; index += 1) {
+      const sourceOffset = textureStart + index * textureStride;
+      textureCoordinates[index * 2] = view.getFloat32(sourceOffset, true);
+      textureCoordinates[index * 2 + 1] = view.getFloat32(sourceOffset + 4, true);
+    }
   }
 
   const indexStart = binaryOffset + (indexView.byteOffset ?? 0) + (indexAccessor.byteOffset ?? 0);
@@ -853,6 +873,7 @@ function parseProofHeadGlb(buffer: ArrayBuffer) {
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  if (textureCoordinates) geometry.setAttribute("uv", new THREE.BufferAttribute(textureCoordinates, 2));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
@@ -860,6 +881,8 @@ function parseProofHeadGlb(buffer: ArrayBuffer) {
 }
 
 let makeHumanHeadPromise: Promise<THREE.BufferGeometry | null> | null = null;
+let faceAtlasPromise: Promise<HTMLImageElement | null> | null = null;
+const portraitCanvasCache = new Map<number, HTMLCanvasElement>();
 
 function loadMakeHumanHead() {
   makeHumanHeadPromise ??= fetch(new URL("assets/faces/makehuman-head.glb", document.baseURI))
@@ -872,11 +895,125 @@ function loadMakeHumanHead() {
   return makeHumanHeadPromise;
 }
 
-async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target) {
+function loadFaceAtlas() {
+  faceAtlasPromise ??= new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = new URL("assets/faces/fictional-casting-atlas.png", document.baseURI).href;
+  });
+  return faceAtlasPromise;
+}
+
+function shapeProofHeadGeometry(source: THREE.BufferGeometry, detail: number) {
+  const geometry = source.clone();
+  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const base = detail % 4;
+  const jawWidth = [0.08, -0.035, 0.13, -0.075][base];
+  const cheekWidth = [0.035, 0.075, -0.02, 0.055][base];
+  const noseDepth = [0.025, 0.07, -0.015, 0.045][base];
+  const browDepth = [0.012, -0.018, 0.04, 0.022][base];
+  const asymmetry = ((detail % 5) - 2) * 0.006;
+  for (let index = 0; index < positions.count; index += 1) {
+    let x = positions.getX(index);
+    const y = positions.getY(index);
+    let z = positions.getZ(index);
+    const lowerFace = THREE.MathUtils.clamp((6.88 - y) / 1.18, 0, 1);
+    const cheek = Math.exp(-Math.pow((y - 6.96) / 0.34, 2));
+    const nose = Math.exp(-Math.pow(x / 0.29, 2)) * Math.exp(-Math.pow((y - 7.02) / 0.52, 2));
+    const brow = Math.exp(-Math.pow(x / 0.67, 4)) * Math.exp(-Math.pow((y - 7.48) / 0.2, 2));
+    x *= 1 + lowerFace * jawWidth + cheek * cheekWidth;
+    x += asymmetry * (1 - Math.abs(x)) * Math.exp(-Math.pow((y - 7.05) / 0.95, 2));
+    z += nose * noseDepth + brow * browDepth;
+    positions.setXYZ(index, x, y, z);
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function portraitCanvas(image: HTMLImageElement, detail: number) {
+  const atlasIndex = detail % 4;
+  const cached = portraitCanvasCache.get(atlasIndex);
+  if (cached) return cached;
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return canvas;
+  const sourceWidth = image.naturalWidth / 2;
+  const sourceHeight = image.naturalHeight / 2;
+  const column = atlasIndex % 2;
+  const row = Math.floor(atlasIndex / 2);
+  context.drawImage(image, column * sourceWidth, row * sourceHeight, sourceWidth, sourceHeight, 0, 0, size, size);
+  const pixels = context.getImageData(0, 0, size, size);
+  const sampleOffsets = [[7, 7], [size - 8, 7], [7, size - 8], [size - 8, size - 8]];
+  const key = sampleOffsets.reduce((sum, [x, y]) => {
+    const offset = (y * size + x) * 4;
+    sum[0] += pixels.data[offset];
+    sum[1] += pixels.data[offset + 1];
+    sum[2] += pixels.data[offset + 2];
+    return sum;
+  }, [0, 0, 0]).map((value) => value / sampleOffsets.length);
+  for (let index = 0; index < size * size; index += 1) {
+    const offset = index * 4;
+    const distance = Math.hypot(
+      pixels.data[offset] - key[0],
+      pixels.data[offset + 1] - key[1],
+      pixels.data[offset + 2] - key[2],
+    );
+    pixels.data[offset + 3] = Math.round(THREE.MathUtils.smoothstep(distance, 13, 46) * 255);
+  }
+  context.putImageData(pixels, 0, 0);
+  portraitCanvasCache.set(atlasIndex, canvas);
+  return canvas;
+}
+
+function createFacePortrait(image: HTMLImageElement, target: Target) {
+  const texture = new THREE.CanvasTexture(portraitCanvas(image, target.detail));
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const geometry = new THREE.PlaneGeometry(0.68, 0.7, 34, 38);
+  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+  for (let index = 0; index < positions.count; index += 1) {
+    const x = positions.getX(index);
+    const y = positions.getY(index);
+    const normalizedX = x / 0.34;
+    const normalizedY = y / 0.35;
+    positions.setZ(index, -normalizedX * normalizedX * 0.038 - normalizedY * normalizedY * 0.012);
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const portrait = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.04,
+      depthWrite: false,
+      roughness: 0.96,
+      metalness: 0,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+    }),
+  );
+  portrait.name = `photographic-face-${target.detail % 4 + 1}`;
+  portrait.position.set(0, 0.34, 0.355);
+  portrait.userData.facePortrait = true;
+  portrait.userData.headVisual = true;
+  portrait.userData.damageVariant = "intact";
+  portrait.renderOrder = 2;
+  return portrait;
+}
+
+async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target, quality: QualityProfile) {
   if (target.species !== "human") return;
-  targetGroup.userData.faceAssetStatus = "loading-makehuman";
-  const sourceGeometry = await loadMakeHumanHead();
-  if (!sourceGeometry || targetGroup.userData.disposed || targetGroup.userData.dead) {
+  targetGroup.userData.faceAssetStatus = "loading-hybrid-face";
+  const [sourceGeometry, atlas] = await Promise.all([loadMakeHumanHead(), loadFaceAtlas()]);
+  if (!sourceGeometry || !atlas || targetGroup.userData.disposed || targetGroup.userData.dead) {
     if (!targetGroup.userData.disposed) targetGroup.userData.faceAssetStatus = "procedural-fallback";
     return;
   }
@@ -884,54 +1021,32 @@ async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target) {
   const model = new THREE.Group();
   const base = target.detail % 4;
   const baseScale: [number, number, number][] = [
-    [0.137, 0.134, 0.142],
-    [0.128, 0.141, 0.132],
-    [0.134, 0.132, 0.151],
-    [0.123, 0.145, 0.137],
+    [0.335, 0.19, 0.16],
+    [0.322, 0.197, 0.158],
+    [0.342, 0.2, 0.165],
+    [0.312, 0.193, 0.157],
   ];
-  const skin = new THREE.Color(target.palette[0]);
-  const random = seededRandom(target.detail + 701);
-  const geometry = sourceGeometry.clone();
-  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
-  const colors = new Float32Array(positions.count * 3);
-  for (let index = 0; index < positions.count; index += 1) {
-    const warmth = (random() - 0.5) * 0.16;
-    const pore = (random() - 0.5) * 0.09;
-    const shade = skin.clone().offsetHSL(warmth * 0.1, pore, warmth + pore);
-    colors[index * 3] = shade.r;
-    colors[index * 3 + 1] = shade.g;
-    colors[index * 3 + 2] = shade.b;
-  }
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const shellSkin = [0xc18f71, 0xac7352, 0x623e30, 0xb27b5e];
+  const geometry = shapeProofHeadGeometry(sourceGeometry, target.detail);
   const face = new THREE.Mesh(
     geometry,
-    new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.58 + (target.detail % 3) * 0.035,
-      metalness: 0,
-      clearcoat: 0.035,
-      clearcoatRoughness: 0.86,
-      sheen: 0.2,
-      sheenColor: skin.clone().lerp(new THREE.Color(0xff5f50), 0.26),
-      sheenRoughness: 0.8,
-    }),
+    createSkinMaterial(shellSkin[base], target.detail, quality.textureSize),
   );
-  face.name = `makehuman-head-base-${base + 1}`;
+  face.name = `clean-head-shell-${base + 1}`;
   face.userData.headVisual = true;
   face.userData.damageVariant = "intact";
   face.castShadow = true;
   face.receiveShadow = true;
   model.add(face);
   model.scale.set(...baseScale[base]);
-  model.position.set(0, -0.565 - (baseScale[base][1] - 0.134) * 6.6, -0.075);
-  model.rotation.y = target.detail % 2 ? -0.012 : 0.012;
-  model.userData.faceAsset = "makehuman-cc0-runtime-glb";
+  model.position.set(0, 0.39 - 7.28415 * baseScale[base][1], 0.279 - 1.24535 * baseScale[base][2]);
+  model.userData.faceAsset = "makehuman-visible-shell-plus-original-photo-atlas";
+  const portrait = createFacePortrait(atlas, target);
   targetGroup.children.forEach((child) => {
-    if (child.userData.proceduralFace) child.visible = false;
+    if (child.userData.proceduralFace || child.name === "procedural-hair") child.visible = false;
   });
-  targetGroup.add(model);
-  targetGroup.userData.faceAssetStatus = "makehuman-loaded";
+  targetGroup.add(model, portrait);
+  targetGroup.userData.faceAssetStatus = "hybrid-face-loaded";
 }
 
 function grimeMaterial(base: number, accent: number, seed: number, repeatX = 3, repeatY = 3) {
@@ -1881,7 +1996,7 @@ function ThreeStage({
       if (child instanceof THREE.Mesh && child.name.startsWith("hit-zone:")) runtime.hitTargets.push(child);
     });
     runtime.scene.add(runtime.target);
-    void hydrateMakeHumanHead(runtime.target, target);
+    void hydrateMakeHumanHead(runtime.target, target, quality);
   }, [target, quality, reducedMotion]);
 
   useEffect(() => {
