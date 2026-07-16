@@ -57,9 +57,10 @@ pnpm build:pages
 This is an unofficial tribute and preservation study. The original concept was
 created by The Onion. All characters, effects, interface work, story copy, and
 audio in this repository are newly created for this browser edition. Four
-fictional head proportions reuse an audited CC0 MakeHuman core-mesh proof with
-new vertex skin finishes, damage variants, and anatomical colliders; a continuous
-procedural head remains the loading fallback. No actor likeness is reproduced.
+original fictional casting portraits are aligned to a clean CC0 MakeHuman
+outer-head shell, with shared anatomical colliders and localized damage
+variants; a continuous procedural head remains the loading fallback. No actor
+likeness is reproduced.
 
 The optional brick and concrete PBR materials are CC0 Poly Haven assets and have
 512 px and 1K variants. See [the asset ledger](docs/ASSET_LICENSES.md) for source
