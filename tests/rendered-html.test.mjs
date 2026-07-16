@@ -68,12 +68,15 @@ test("layers localized destruction while preserving the victim aftermath", async
   assert.ok(source.indexOf("const tracking = Math.min(1, delta * 11)") < source.indexOf("child.rotation.y = THREE.MathUtils.lerp"));
 });
 
-test("uses procedural skin detail and commercial-inspired comedy systems", async () => {
+test("uses faceted low-poly heads and commercial-inspired comedy systems", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
   const config = await readFile(new URL("../app/gameConfig.ts", import.meta.url), "utf8");
-  assert.match(source, /function createSkinMaterial/);
-  assert.match(source, /bumpMap/);
-  assert.match(source, /function createHeadGeometry/);
+  assert.match(source, /function lowPolyMaterial/);
+  assert.match(source, /flatShading: true/);
+  assert.match(source, /const LOW_POLY_HEAD_SHAPES/);
+  assert.match(source, /function buildHuman/);
+  assert.match(source, /low-poly-hair/);
+  assert.doesNotMatch(source, /portraitCanvas|photographic-face|fictional-casting-atlas/);
   assert.match(source, /I KNOW WHERE YOUR BROTHER IS/);
   assert.match(source, /ANIMAL FACE SIDE MISSION/);
   assert.match(source, /CLOSE RANGE 2/);
