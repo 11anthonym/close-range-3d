@@ -57,10 +57,12 @@ pnpm build:pages
 This is an unofficial tribute and preservation study. The original concept was
 created by The Onion. All characters, effects, interface work, story copy, and
 audio in this repository are newly created for this browser edition. Four
-original fictional casting portraits are aligned to a clean CC0 MakeHuman
-outer-head shell, with shared anatomical colliders and localized damage
-variants; a continuous procedural head remains the loading fallback. No actor
-likeness is reproduced.
+original low-poly human configurations are assembled entirely from faceted
+Three.js geometry, with distinct skulls, jaws, noses, ears, eyes, hair
+silhouettes, anatomical colliders, and matching localized damage variants. No
+photographs, portrait atlases, external character models, or actor likenesses
+are used. The four base heads render at roughly 950-1,100 visible triangles,
+including facial features, hair, ears, and the short faceted neck.
 
 The optional brick and concrete PBR materials are CC0 Poly Haven assets and have
 512 px and 1K variants. See [the asset ledger](docs/ASSET_LICENSES.md) for source

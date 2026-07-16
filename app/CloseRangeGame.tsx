@@ -176,10 +176,6 @@ function material(color: number, roughness = 0.72, metalness = 0.05) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function physicalMaterial(color: number, roughness = 0.62, metalness = 0, clearcoat = 0.08) {
-  return new THREE.MeshPhysicalMaterial({ color, roughness, metalness, clearcoat, clearcoatRoughness: 0.78 });
-}
-
 function seededRandom(seed: number) {
   let value = Math.max(1, seed * 104729 + 97) % 2147483647;
   return () => {
@@ -188,82 +184,12 @@ function seededRandom(seed: number) {
   };
 }
 
-function createSkinMaterial(skin: number, detail: number, textureSize: 512 | 1024) {
-  const size = textureSize;
-  const albedoCanvas = document.createElement("canvas");
-  const bumpCanvas = document.createElement("canvas");
-  albedoCanvas.width = bumpCanvas.width = size;
-  albedoCanvas.height = bumpCanvas.height = size;
-  const albedo = albedoCanvas.getContext("2d");
-  const bump = bumpCanvas.getContext("2d");
-  if (!albedo || !bump) return physicalMaterial(skin, 0.62, 0, 0.03);
-
-  const random = seededRandom(detail + 41);
-  const red = (skin >> 16) & 255;
-  const green = (skin >> 8) & 255;
-  const blue = skin & 255;
-  const albedoPixels = albedo.createImageData(size, size);
-  const bumpPixels = bump.createImageData(size, size);
-  for (let i = 0; i < size * size; i += 1) {
-    const pore = (random() - 0.5) * 17;
-    const warmth = (random() - 0.5) * 9;
-    albedoPixels.data[i * 4] = THREE.MathUtils.clamp(red + pore + warmth, 0, 255);
-    albedoPixels.data[i * 4 + 1] = THREE.MathUtils.clamp(green + pore * 0.55, 0, 255);
-    albedoPixels.data[i * 4 + 2] = THREE.MathUtils.clamp(blue + pore * 0.42 - warmth * 0.3, 0, 255);
-    albedoPixels.data[i * 4 + 3] = 255;
-    const height = THREE.MathUtils.clamp(132 + pore * 2.2 + (random() > 0.982 ? -52 : 0), 0, 255);
-    bumpPixels.data[i * 4] = height;
-    bumpPixels.data[i * 4 + 1] = height;
-    bumpPixels.data[i * 4 + 2] = height;
-    bumpPixels.data[i * 4 + 3] = 255;
-  }
-  albedo.putImageData(albedoPixels, 0, 0);
-  bump.putImageData(bumpPixels, 0, 0);
-
-  // Uneven capillaries, freckles and beard shadow stop the close-up skin reading as plastic.
-  albedo.globalCompositeOperation = "multiply";
-  for (let i = 0; i < 95 + (detail % 4) * 35; i += 1) {
-    const radius = 0.45 + random() * (detail % 3 === 0 ? 2.2 : 1.25);
-    albedo.globalAlpha = 0.05 + random() * 0.13;
-    albedo.fillStyle = i % 5 ? "#5b3026" : "#9b4a42";
-    albedo.beginPath();
-    albedo.arc(random() * size, random() * size, radius, 0, Math.PI * 2);
-    albedo.fill();
-  }
-  if (detail % 3 === 1 || detail % 5 === 2) {
-    const beard = albedo.createLinearGradient(0, size * 0.45, 0, size);
-    beard.addColorStop(0, "rgba(30,35,34,0)");
-    beard.addColorStop(1, "rgba(20,24,24,0.34)");
-    albedo.globalAlpha = 0.5;
-    albedo.fillStyle = beard;
-    albedo.fillRect(0, size * 0.42, size, size * 0.58);
-  }
-  albedo.globalAlpha = 1;
-  albedo.globalCompositeOperation = "source-over";
-
-  const map = new THREE.CanvasTexture(albedoCanvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(1.35, 1.1);
-  map.anisotropy = 8;
-  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
-  bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
-  bumpMap.repeat.copy(map.repeat);
-  bumpMap.anisotropy = 8;
-  const skinColor = new THREE.Color(skin);
-  return new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
-    map,
-    bumpMap,
-    bumpScale: 0.012,
-    roughnessMap: bumpMap,
-    roughness: 0.68,
+function lowPolyMaterial(color: number) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.9,
     metalness: 0,
-    clearcoat: 0.025,
-    clearcoatRoughness: 0.9,
-    sheen: 0.16,
-    sheenColor: skinColor.clone().lerp(new THREE.Color(0xff6b58), 0.28),
-    sheenRoughness: 0.82,
+    flatShading: true,
   });
 }
 
@@ -312,22 +238,6 @@ function disposeObject(root: THREE.Object3D | null) {
   root.removeFromParent();
 }
 
-function addMaterialEllipsoid(
-  group: THREE.Group,
-  scale: [number, number, number],
-  position: [number, number, number],
-  finish: THREE.Material,
-  segments = 36,
-) {
-  const item = new THREE.Mesh(new THREE.SphereGeometry(1, segments, Math.max(20, Math.floor(segments * 0.72))), finish);
-  item.scale.set(...scale);
-  item.position.set(...position);
-  item.castShadow = true;
-  item.receiveShadow = true;
-  group.add(item);
-  return item;
-}
-
 function addEllipsoid(
   group: THREE.Group,
   scale: [number, number, number],
@@ -360,186 +270,236 @@ function addHitZone(
   return target;
 }
 
-function createHeadGeometry(detail: number) {
-  const geometry = new THREE.SphereGeometry(1, 112, 88);
-  const position = geometry.attributes.position as THREE.BufferAttribute;
-  const base = detail % 4;
-  const asymmetry = ((detail % 5) - 2) * 0.008;
-  const jawTaper = [0.13, 0.19, 0.155, 0.225][base];
-  const skullWidth = [1.04, 0.96, 1.01, 0.925][base];
-  const skullHeight = [0.98, 1.045, 1.0, 1.075][base];
-  const profileDepth = [1.03, 0.96, 1.075, 0.99][base];
-  for (let index = 0; index < position.count; index += 1) {
-    let x = position.getX(index);
-    let y = position.getY(index);
-    let z = position.getZ(index);
-    x *= skullWidth;
-    y *= skullHeight;
-    z *= profileDepth;
-    const lowerFace = Math.max(0, -y);
-    const cheekPlane = Math.exp(-Math.pow((y + 0.03) / 0.3, 2));
-    const temple = Math.exp(-Math.pow((y - 0.38) / 0.22, 2));
-    x *= 1 - lowerFace * jawTaper + cheekPlane * 0.035 - temple * 0.025;
-    if (base === 0) x *= 1 + cheekPlane * 0.045;
-    if (base === 1) z += cheekPlane * 0.025;
-    if (base === 2 && y < -0.35) x *= 1.035;
-    if (base === 3 && y < -0.42) z += lowerFace * 0.055;
-    x += asymmetry * (1 - Math.abs(y));
-    z *= 0.96 + cheekPlane * 0.055;
-    if (y < -0.55) z += Math.pow((-y - 0.55) / 0.45, 2) * 0.11;
-    position.setXYZ(index, x, y, z);
-  }
-  position.needsUpdate = true;
+type LowPolyHairStyle = "crew" | "side-part" | "high-top" | "receding";
+
+type LowPolyHeadShape = {
+  id: string;
+  skin: number;
+  hair: number;
+  eye: number;
+  cranium: [number, number, number];
+  face: [number, number, number];
+  jaw: [number, number, number];
+  chin: [number, number, number];
+  ear: [number, number, number];
+  eyeSpacing: number;
+  eyeScale: [number, number];
+  eyeY: number;
+  nose: [number, number, number];
+  noseY: number;
+  mouthY: number;
+  browDepth: number;
+  hairStyle: LowPolyHairStyle;
+};
+
+const LOW_POLY_HEAD_SHAPES: readonly LowPolyHeadShape[] = [
+  { id: "broad-square", skin: 0xbd8967, hair: 0x2b211a, eye: 0x34433b, cranium: [0.305, 0.36, 0.25], face: [0.285, 0.3, 0.225], jaw: [0.245, 0.16, 0.2], chin: [0.11, 0.075, 0.12], ear: [0.05, 0.095, 0.034], eyeSpacing: 0.115, eyeScale: [0.05, 0.027], eyeY: 0.39, nose: [0.075, 0.15, 0.13], noseY: 0.29, mouthY: 0.15, browDepth: 0.032, hairStyle: "crew" },
+  { id: "long-narrow", skin: 0x986348, hair: 0x171412, eye: 0x3a4a42, cranium: [0.275, 0.39, 0.245], face: [0.255, 0.33, 0.22], jaw: [0.195, 0.18, 0.185], chin: [0.09, 0.085, 0.11], ear: [0.042, 0.105, 0.03], eyeSpacing: 0.104, eyeScale: [0.046, 0.025], eyeY: 0.405, nose: [0.06, 0.175, 0.15], noseY: 0.29, mouthY: 0.14, browDepth: 0.042, hairStyle: "side-part" },
+  { id: "heavy-jaw", skin: 0x603b2d, hair: 0x171513, eye: 0x2b241c, cranium: [0.32, 0.35, 0.265], face: [0.3, 0.29, 0.24], jaw: [0.265, 0.17, 0.22], chin: [0.13, 0.07, 0.13], ear: [0.055, 0.09, 0.038], eyeSpacing: 0.125, eyeScale: [0.052, 0.026], eyeY: 0.385, nose: [0.09, 0.145, 0.12], noseY: 0.285, mouthY: 0.15, browDepth: 0.05, hairStyle: "high-top" },
+  { id: "sharp-chin", skin: 0xc49773, hair: 0x4d463e, eye: 0x2c3540, cranium: [0.285, 0.37, 0.24], face: [0.265, 0.315, 0.215], jaw: [0.215, 0.155, 0.18], chin: [0.08, 0.095, 0.105], ear: [0.046, 0.082, 0.03], eyeSpacing: 0.11, eyeScale: [0.047, 0.024], eyeY: 0.4, nose: [0.055, 0.16, 0.14], noseY: 0.295, mouthY: 0.145, browDepth: 0.036, hairStyle: "receding" },
+];
+
+function lowPolyHeadShape(detail: number) {
+  return LOW_POLY_HEAD_SHAPES[detail % LOW_POLY_HEAD_SHAPES.length];
+}
+
+function lowPolyFaceLandmarks(detail: number) {
+  const shape = lowPolyHeadShape(detail);
+  return {
+    shape,
+    earX: shape.cranium[0] + shape.ear[0] * 0.62,
+    earY: 0.325,
+    eyeX: shape.eyeSpacing,
+    eyeY: shape.eyeY,
+    eyeZ: 0.331,
+    noseY: shape.noseY - shape.nose[1] * 0.12,
+    noseZ: 0.25 + shape.nose[2] * 0.93,
+    mouthY: shape.mouthY,
+    mouthZ: 0.334,
+  };
+}
+
+function shiftedColor(color: number, lightness: number) {
+  return new THREE.Color(color).offsetHSL(0, 0, lightness).getHex();
+}
+
+function addLowPolyPart(
+  group: THREE.Group,
+  geometry: THREE.BufferGeometry,
+  finish: THREE.Material,
+  name: string,
+  position: [number, number, number],
+  scale: [number, number, number] = [1, 1, 1],
+) {
+  const part = new THREE.Mesh(geometry, finish);
+  part.name = name;
+  part.position.set(...position);
+  part.scale.set(...scale);
+  part.castShadow = true;
+  part.receiveShadow = true;
+  part.userData.lowPolyHeadPart = true;
+  part.userData.headVisual = true;
+  group.add(part);
+  return part;
+}
+
+function triangleGeometry(vertices: Array<[number, number, number]>, faces: Array<[number, number, number]>) {
+  const coordinates: number[] = [];
+  faces.forEach((face) => face.forEach((index) => coordinates.push(...vertices[index])));
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(coordinates, 3));
   geometry.computeVertexNormals();
   return geometry;
 }
 
-function buildHuman(target: Target, quality: QualityProfile) {
-  const group = new THREE.Group();
-  const [skin, hair, clothes] = target.palette;
-  const faceWidth = 0.315 + (target.detail % 3) * 0.009;
-  const skinFinish = createSkinMaterial(skin, target.detail, quality.textureSize);
-  const head = new THREE.Mesh(createHeadGeometry(target.detail), skinFinish);
-  head.scale.set(faceWidth, 0.41 + (target.detail % 4) * 0.004, 0.286);
-  head.position.set(0, 0.34, 0);
-  head.castShadow = true;
-  head.receiveShadow = true;
-  head.userData.faceBase = target.detail % 4;
-  group.add(head);
+function createNoseWedgeGeometry(width: number, height: number, depth: number) {
+  const vertices: Array<[number, number, number]> = [
+    [-width / 2, height / 2, 0], [width / 2, height / 2, 0],
+    [-width * 0.42, -height / 2, 0], [width * 0.42, -height / 2, 0],
+    [0, height * 0.08, depth], [0, -height * 0.45, depth * 0.92],
+  ];
+  return triangleGeometry(vertices, [[0, 1, 4], [0, 4, 5], [0, 5, 2], [1, 3, 5], [1, 5, 4], [2, 5, 3], [0, 2, 3], [0, 3, 1]]);
+}
 
-  // Facial planes use the same pore-mapped finish so their boundaries visually merge into the cranium.
-  addMaterialEllipsoid(group, [0.177, 0.155, 0.074], [-0.114, 0.265, 0.227], skinFinish, 44);
-  addMaterialEllipsoid(group, [0.177, 0.155, 0.074], [0.114, 0.265, 0.227], skinFinish, 44);
-  const jaw = addMaterialEllipsoid(group, [0.22, 0.17, 0.128], [0, 0.085, 0.07], skinFinish, 48);
-  jaw.scale.x *= 0.94 + (target.detail % 4) * 0.018;
-  jaw.userData.lowerFace = true;
-  addMaterialEllipsoid(group, [0.126, 0.07, 0.065], [0, 0.182, 0.258], skinFinish, 40);
+function createBrowWedgeGeometry(width: number, height: number, depth: number, side: number) {
+  const outer = side * width / 2;
+  const inner = side * -width / 2;
+  const vertices: Array<[number, number, number]> = [
+    [inner, height / 2, 0], [outer, height * 0.34, 0], [outer, -height / 2, 0], [inner, -height * 0.32, 0],
+    [inner, height / 2, depth], [outer, height * 0.34, depth * 0.62], [outer, -height / 2, depth * 0.62], [inner, -height * 0.32, depth],
+  ];
+  return triangleGeometry(vertices, [[0, 1, 5], [0, 5, 4], [4, 5, 6], [4, 6, 7], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]]);
+}
 
-  const earGeometry = new THREE.SphereGeometry(1, 24, 18);
-  [-1, 1].forEach((side) => {
-    const ear = new THREE.Mesh(earGeometry.clone(), skinFinish);
-    ear.position.set((faceWidth + 0.018) * side, 0.32, 0.005);
-    ear.scale.set(0.045, 0.09, 0.033);
-    ear.castShadow = true;
-    group.add(ear);
-    const innerEar = addEllipsoid(group, [0.013, 0.047, 0.015], [(faceWidth + 0.024) * side, 0.32, 0.034], 0x6b302b, 20);
-    innerEar.rotation.z = side * 0.12;
-  });
+function createCheekPlaneGeometry(side: number, shape: LowPolyHeadShape) {
+  const inner = side * 0.045;
+  const outer = side * shape.face[0] * 0.94;
+  const vertices: Array<[number, number, number]> = [
+    [inner, shape.eyeY - 0.015, 0.284],
+    [outer, shape.eyeY - 0.055, 0.218],
+    [outer * 0.9, shape.mouthY + 0.015, 0.205],
+    [inner, shape.mouthY + 0.06, 0.294],
+  ];
+  return triangleGeometry(vertices, side < 0 ? [[0, 2, 1], [0, 3, 2]] : [[0, 1, 2], [0, 2, 3]]);
+}
 
-  const eyeSpacing = 0.118 + (target.detail % 2) * 0.006;
-  [-1, 1].forEach((side) => {
-    const socket = addEllipsoid(group, [0.083, 0.055, 0.025], [eyeSpacing * side, 0.39, 0.263], 0x4b2823, 32);
-    socket.scale.x *= 1.05;
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 20), physicalMaterial(0xe5dfd2, 0.28, 0, 0.45));
-    eye.name = `living-eye:${side < 0 ? "left" : "right"}`;
-    eye.position.set(eyeSpacing * side, 0.39, 0.279);
-    eye.scale.set(0.064, 0.035, 0.027);
-    group.add(eye);
-    const irisColor = [0x35261c, 0x3a4c43, 0x273b4c][target.detail % 3];
-    const iris = mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.006, 24), irisColor, 0.35, 0.05);
-    iris.rotation.x = Math.PI / 2;
-    iris.position.set(eyeSpacing * side, 0.39, 0.309);
-    group.add(iris);
-    const pupil = mesh(new THREE.SphereGeometry(0.008, 16, 10), 0x050505, 0.2, 0.1);
-    pupil.position.set(eyeSpacing * side, 0.39, 0.315);
-    group.add(pupil);
-    const catchlight = mesh(new THREE.SphereGeometry(0.0045, 10, 8), 0xffffff, 0.1, 0);
-    catchlight.position.set(eyeSpacing * side - 0.006, 0.398, 0.322);
-    group.add(catchlight);
-    const cornea = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 24, 16),
-      new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, roughness: 0.04, transmission: 0.18 }),
-    );
-    cornea.scale.set(0.065, 0.036, 0.029);
-    cornea.position.set(eyeSpacing * side, 0.39, 0.284);
-    group.add(cornea);
-    const lid = new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.009, 8, 32, Math.PI), skinFinish);
-    lid.scale.y = 0.55;
-    lid.rotation.z = side * 0.03;
-    lid.position.set(eyeSpacing * side, 0.4, 0.307);
-    group.add(lid);
-    addEllipsoid(group, [0.008, 0.006, 0.006], [(eyeSpacing - 0.055) * side, 0.386, 0.313], 0x8d3d37, 14);
-    const brow = mesh(new THREE.CapsuleGeometry(0.014, 0.105, 6, 12), hair, 0.88, 0);
-    brow.rotation.z = Math.PI / 2 + side * (target.detail % 2 ? -0.09 : 0.06);
-    brow.position.set(eyeSpacing * side, 0.485, 0.273);
-    group.add(brow);
-  });
+function createAngularMouthGeometry(width: number, open: boolean) {
+  const height = open ? 0.032 : 0.016;
+  const vertices: Array<[number, number, number]> = [
+    [-width / 2, 0, 0], [-width * 0.18, height * 0.42, 0.003], [0, height * 0.15, 0.006],
+    [width * 0.18, height * 0.42, 0.003], [width / 2, 0, 0], [0, -height, 0.008],
+  ];
+  return triangleGeometry(vertices, [[0, 5, 1], [1, 5, 2], [2, 5, 3], [3, 5, 4]]);
+}
 
-  addMaterialEllipsoid(group, [0.038 + (target.detail % 3) * 0.004, 0.118, 0.041], [0, 0.32, 0.286], skinFinish, 42);
-  addMaterialEllipsoid(group, [0.064 + (target.detail % 4) * 0.003, 0.048, 0.052], [0, 0.25, 0.32], skinFinish, 42);
-  [-1, 1].forEach((side) => addEllipsoid(group, [0.014, 0.009, 0.008], [0.026 * side, 0.243, 0.363], 0x2b1713, 16));
-
-  // Subtle nasolabial folds and forehead creases catch the raking key light.
-  [-1, 1].forEach((side) => {
-    const fold = mesh(new THREE.CapsuleGeometry(0.004, 0.095, 5, 10), 0x7b4338, 0.9, 0);
-    fold.position.set(0.078 * side, 0.205, 0.295);
-    fold.rotation.z = side * -0.25;
-    group.add(fold);
-  });
-  if (target.detail % 4 >= 2) {
-    [-1, 0, 1].forEach((offset) => {
-      const crease = mesh(new THREE.CapsuleGeometry(0.0025, 0.12, 4, 9), 0x704037, 0.95, 0);
-      crease.rotation.z = Math.PI / 2;
-      crease.position.set(offset * 0.035, 0.545 + Math.abs(offset) * 0.018, 0.264);
-      group.add(crease);
-    });
-  }
-
-  const lipColor = target.detail % 4 === 0 ? 0x6c332f : 0x4a2724;
-  const mouthOpen = target.detail % 3 === 0;
-  const mouthPartStart = group.children.length;
-  if (mouthOpen) {
-    addEllipsoid(group, [0.087, 0.034, 0.018], [0, 0.112, 0.302], 0x140606, 30);
-    addBox(group, [0.105, 0.016, 0.01], [0, 0.123, 0.319], 0xe5dbc5);
-    addBox(group, [0.096, 0.009, 0.009], [0, 0.095, 0.315], 0xd6cbb7);
-  }
-  const upperLip = addEllipsoid(group, [0.093, 0.018, 0.022], [0, 0.125, 0.292], lipColor, 28);
-  upperLip.rotation.z = (target.detail % 3 - 1) * 0.035;
-  addEllipsoid(group, [0.083, 0.014, 0.018], [0, 0.105, 0.288], 0x7d443d, 26);
-  if (!mouthOpen) addEllipsoid(group, [0.085, 0.007, 0.008], [0, 0.116, 0.313], 0x170b0a, 22);
-  group.children.slice(mouthPartStart).forEach((child) => { child.userData.lowerFace = true; });
-
-  const hairCap = mesh(
-    new THREE.SphereGeometry(1, 52, 28, 0, Math.PI * 2, 0, Math.PI * 0.52),
-    hair,
+function addLowPolyHair(group: THREE.Group, shape: LowPolyHeadShape) {
+  const finish = lowPolyMaterial(shape.hair);
+  const capLength = shape.hairStyle === "receding" ? Math.PI * 0.44 : shape.hairStyle === "crew" ? Math.PI * 0.6 : Math.PI * 0.56;
+  const cap = addLowPolyPart(
+    group,
+    new THREE.SphereGeometry(1, 12, 5, 0, Math.PI * 2, 0, capLength),
+    finish,
+    `low-poly-hair:${shape.hairStyle}`,
+    [0, shape.hairStyle === "receding" ? 0.4 : 0.39, shape.hairStyle === "receding" ? -0.025 : -0.005],
+    [shape.cranium[0] * 1.035, shape.cranium[1] * 1.02, shape.cranium[2] * 1.035],
   );
-  hairCap.name = "procedural-hair";
-  hairCap.scale.set(faceWidth * 1.045, 0.425, 0.295);
-  hairCap.position.y = 0.345;
-  group.add(hairCap);
-  const fringeCount = 7 + (target.detail % 4);
-  for (let i = 0; i < fringeCount; i += 1) {
-    const strand = mesh(new THREE.CapsuleGeometry(0.014, 0.1 + (i % 3) * 0.025, 5, 9), hair, 0.9, 0);
-    strand.name = "procedural-hair";
-    strand.position.set(-0.22 + i * (0.44 / Math.max(1, fringeCount - 1)), 0.625 + Math.sin(i * 1.8) * 0.018, 0.15 + Math.cos(i) * 0.015);
-    strand.rotation.z = (i - fringeCount / 2) * 0.05;
-    group.add(strand);
+  cap.rotation.y = shape.hairStyle === "side-part" ? -0.08 : 0;
+
+  const addHairlineBlock = (x: number, y: number, width: number, height: number, tilt: number) => {
+    const block = addLowPolyPart(group, createBrowWedgeGeometry(width, height, 0.055, x < 0 ? -1 : 1), finish, "low-poly-hair-wedge", [x, y, 0.19]);
+    block.rotation.z = tilt;
+  };
+  if (shape.hairStyle === "crew") {
+    addHairlineBlock(-0.12, 0.616, 0.16, 0.065, -0.08);
+    addHairlineBlock(0.12, 0.616, 0.16, 0.065, 0.08);
+  } else if (shape.hairStyle === "side-part") {
+    addHairlineBlock(-0.14, 0.625, 0.17, 0.09, -0.12);
+    addHairlineBlock(0.02, 0.638, 0.16, 0.075, -0.08);
+    addHairlineBlock(0.16, 0.646, 0.12, 0.065, -0.05);
+  } else if (shape.hairStyle === "high-top") {
+    addLowPolyPart(group, new THREE.CylinderGeometry(0.19, 0.27, 0.15, 8), finish, "low-poly-hair-high-top", [0, 0.67, -0.005], [1, 1, 0.88]);
+  } else {
+    addHairlineBlock(-0.19, 0.595, 0.1, 0.14, -0.2);
+    addHairlineBlock(0.19, 0.595, 0.1, 0.14, 0.2);
   }
+}
+
+function countLowPolyHeadTriangles(group: THREE.Group) {
+  let triangles = 0;
+  group.traverse((child) => {
+    if (!(child instanceof THREE.Mesh) || !child.userData.lowPolyHeadPart) return;
+    triangles += child.geometry.index ? child.geometry.index.count / 3 : child.geometry.attributes.position.count / 3;
+  });
+  return Math.round(triangles);
+}
+
+function buildHuman(target: Target) {
+  const group = new THREE.Group();
+  const shape = lowPolyHeadShape(target.detail);
+  const clothes = target.palette[2];
+  const skin = lowPolyMaterial(shape.skin);
+  const skinLight = lowPolyMaterial(shiftedColor(shape.skin, 0.045));
+  const skinShadow = lowPolyMaterial(shiftedColor(shape.skin, -0.035));
+  const socketFinish = lowPolyMaterial(shiftedColor(shape.skin, -0.18));
+
+  addLowPolyPart(group, new THREE.SphereGeometry(1, 12, 8), skin, "low-poly-cranium", [0, 0.38, -0.015], shape.cranium);
+  addLowPolyPart(group, new THREE.SphereGeometry(1, 10, 6), skinLight, "low-poly-forehead-face", [0, 0.345, 0.065], shape.face);
+  const jaw = addLowPolyPart(group, new THREE.SphereGeometry(1, 10, 6), skinShadow, "low-poly-jaw", [0, 0.145, 0.055], shape.jaw);
+  jaw.userData.lowerFace = true;
+  const chin = addLowPolyPart(group, new THREE.SphereGeometry(1, 8, 5), skin, "low-poly-chin", [0, 0.045, 0.115], shape.chin);
+  chin.userData.lowerFace = true;
+
+  [-1, 1].forEach((side) => {
+    addLowPolyPart(group, createCheekPlaneGeometry(side, shape), side < 0 ? skinLight : skinShadow, `low-poly-cheek:${side}`, [0, 0, 0]);
+    const brow = addLowPolyPart(
+      group,
+      createBrowWedgeGeometry(shape.eyeScale[0] * 1.9, 0.033, shape.browDepth, side),
+      skinShadow,
+      `low-poly-brow:${side}`,
+      [shape.eyeSpacing * side, shape.eyeY + 0.075, 0.245],
+    );
+    brow.rotation.z = side * (shape.id === "sharp-chin" ? -0.09 : 0.045);
+    const eyebrow = addLowPolyPart(group, new THREE.BoxGeometry(shape.eyeScale[0] * 1.45, 0.011, 0.012), lowPolyMaterial(shape.hair), `low-poly-eyebrow:${side}`, [shape.eyeSpacing * side, shape.eyeY + 0.067, 0.296]);
+    eyebrow.rotation.z = side * (shape.id === "sharp-chin" ? -0.09 : 0.045);
+
+    const earX = (shape.cranium[0] + shape.ear[0] * 0.62) * side;
+    addLowPolyPart(group, new THREE.SphereGeometry(1, 6, 4), skin, `low-poly-ear:${side}`, [earX, 0.325, 0.005], shape.ear);
+    addLowPolyPart(group, new THREE.CircleGeometry(1, 6), socketFinish, `low-poly-inner-ear:${side}`, [earX, 0.325, shape.ear[2] + 0.006], [shape.ear[0] * 0.42, shape.ear[1] * 0.55, 1]);
+
+    addLowPolyPart(group, new THREE.CircleGeometry(1, 8), socketFinish, `low-poly-eye-socket:${side}`, [shape.eyeSpacing * side, shape.eyeY, 0.294], [shape.eyeScale[0] * 1.18, shape.eyeScale[1] * 1.2, 1]);
+    const eye = addLowPolyPart(group, new THREE.SphereGeometry(1, 8, 4), lowPolyMaterial(0xd8d0bc), `living-eye:${side < 0 ? "left" : "right"}`, [shape.eyeSpacing * side, shape.eyeY, 0.31], [shape.eyeScale[0] * 0.82, shape.eyeScale[1] * 0.68, 0.021]);
+    eye.rotation.z = side * 0.04;
+    const pupil = addLowPolyPart(group, new THREE.CylinderGeometry(0.011, 0.011, 0.008, 8), lowPolyMaterial(shape.eye), `low-poly-pupil:${side}`, [shape.eyeSpacing * side, shape.eyeY, 0.331]);
+    pupil.rotation.x = Math.PI / 2;
+  });
+
+  addLowPolyPart(group, createNoseWedgeGeometry(...shape.nose), skinLight, "low-poly-nose-wedge", [0, shape.noseY, 0.25]);
+  addLowPolyPart(group, new THREE.SphereGeometry(1, 6, 4), skinShadow, "low-poly-nose-tip", [0, shape.noseY - shape.nose[1] * 0.35, 0.25 + shape.nose[2] * 0.84], [shape.nose[0] * 0.55, shape.nose[1] * 0.2, shape.nose[2] * 0.24]);
+  [-1, 1].forEach((side) => addLowPolyPart(group, new THREE.CircleGeometry(0.009, 6), socketFinish, `low-poly-nostril:${side}`, [shape.nose[0] * 0.21 * side, shape.noseY - shape.nose[1] * 0.42, 0.25 + shape.nose[2] * 0.935]));
+
+  const mouthOpen = target.detail % 3 === 0;
+  const mouth = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.5, mouthOpen), lowPolyMaterial(0x351517), "low-poly-mouth", [0, shape.mouthY, 0.334]);
+  mouth.userData.lowerFace = true;
+  const lowerLip = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.43, false), lowPolyMaterial(shiftedColor(shape.skin, -0.11)), "low-poly-lower-lip", [0, shape.mouthY - 0.022, 0.338], [1, 0.5, 1]);
+  lowerLip.userData.lowerFace = true;
+  addLowPolyHair(group, shape);
+  const neck = addLowPolyPart(group, new THREE.CylinderGeometry(0.12, 0.15, 0.25, 8), skinShadow, "low-poly-neck", [0, -0.075, -0.005]);
+  neck.userData.lowerFace = true;
 
   if (target.detail % 5 === 4) {
-    const glasses = material(0x080808, 0.25, 0.25);
-    [-1, 1].forEach((side) => {
-      const lens = new THREE.Mesh(new THREE.TorusGeometry(0.073, 0.009, 10, 28), glasses);
-      lens.scale.y = 0.72;
-      lens.position.set(eyeSpacing * side, 0.39, 0.335);
-      group.add(lens);
-    });
-    addBox(group, [0.08, 0.014, 0.014], [0, 0.39, 0.335], 0x080808);
+    const glasses = lowPolyMaterial(0x111315);
+    [-1, 1].forEach((side) => addLowPolyPart(group, new THREE.TorusGeometry(0.066, 0.008, 4, 8), glasses, `low-poly-glasses:${side}`, [shape.eyeSpacing * side, shape.eyeY, 0.342], [1, 0.72, 1]));
+    addLowPolyPart(group, new THREE.BoxGeometry(0.07, 0.012, 0.012), glasses, "low-poly-glasses-bridge", [0, shape.eyeY, 0.342]);
   }
 
-  group.children.forEach((child) => {
-    if (child.name !== "procedural-hair") child.userData.proceduralFace = true;
-  });
-  group.userData.faceBase = target.detail % 4;
-  group.userData.faceAssetStatus = "procedural-fallback";
+  group.userData.faceBase = target.detail % LOW_POLY_HEAD_SHAPES.length;
+  group.userData.faceVariant = shape.id;
+  group.userData.faceAssetStatus = "procedural-low-poly-ready";
+  group.userData.lowPolyTriangleCount = countLowPolyHeadTriangles(group);
 
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.32, 36), skinFinish);
-  neck.castShadow = true;
-  neck.position.y = -0.12;
-  group.add(neck);
-  const shoulders = addEllipsoid(group, [0.59, 0.28, 0.25], [0, -0.48, -0.02], clothes, 36);
+  const shoulders = addEllipsoid(group, [0.59, 0.28, 0.25], [0, -0.48, -0.02], clothes, 20);
   shoulders.rotation.x = -0.05;
-  const torso = mesh(new THREE.CylinderGeometry(0.38, 0.55, 0.72, 28), clothes, 0.8, 0.02);
+  const torso = mesh(new THREE.CylinderGeometry(0.38, 0.55, 0.72, 16), clothes, 0.8, 0.02);
   torso.position.y = -0.72;
   group.add(torso);
   const shirt = addBox(group, [0.19, 0.52, 0.025], [0, -0.58, 0.255], 0x17191a);
@@ -641,24 +601,14 @@ function addDamageAftermathRig(group: THREE.Group, species: Species) {
   wound.position.set(...position[species]);
   const [width, height] = scale[species];
   const cavity = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 19),
-    new THREE.MeshPhysicalMaterial({
-      color: 0x230202,
-      roughness: 0.28,
-      metalness: 0,
-      clearcoat: 0.52,
-    }),
+    new THREE.CircleGeometry(1, 9),
+    lowPolyMaterial(0x230202),
   );
   cavity.scale.set(width, height, 1);
   wound.add(cavity);
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1, 0.22, 9, 17),
-    new THREE.MeshPhysicalMaterial({
-      color: 0x74100c,
-      roughness: 0.22,
-      metalness: 0,
-      clearcoat: 0.7,
-    }),
+    new THREE.TorusGeometry(1, 0.22, 4, 10),
+    lowPolyMaterial(0x74100c),
   );
   ring.scale.set(width, height, Math.min(width, height));
   ring.position.z = 0.006;
@@ -679,15 +629,17 @@ function addDamageAftermathRig(group: THREE.Group, species: Species) {
   group.add(wound);
 }
 
-function addLocalizedDamageVariants(group: THREE.Group, species: Species) {
+function addLocalizedDamageVariants(group: THREE.Group, target: Target) {
+  const species = target.species;
+  const human = lowPolyFaceLandmarks(target.detail);
   const variants: Partial<Record<HitZone, { position: [number, number, number]; scale: [number, number] }>> = species === "human"
     ? {
-        "left-ear": { position: [-0.25, 0.32, 0.36], scale: [0.052, 0.095] },
-        "right-ear": { position: [0.25, 0.32, 0.36], scale: [0.052, 0.095] },
-        "left-eye": { position: [-0.105, 0.39, 0.37], scale: [0.064, 0.05] },
-        "right-eye": { position: [0.105, 0.39, 0.37], scale: [0.064, 0.05] },
-        nose: { position: [0, 0.265, 0.395], scale: [0.064, 0.092] },
-        mouth: { position: [0, 0.18, 0.37], scale: [0.12, 0.06] },
+        "left-ear": { position: [-human.earX, human.earY, human.shape.ear[2] + 0.014], scale: [human.shape.ear[0], human.shape.ear[1]] },
+        "right-ear": { position: [human.earX, human.earY, human.shape.ear[2] + 0.014], scale: [human.shape.ear[0], human.shape.ear[1]] },
+        "left-eye": { position: [-human.eyeX, human.eyeY, human.eyeZ + 0.014], scale: [human.shape.eyeScale[0], human.shape.eyeScale[1] * 1.15] },
+        "right-eye": { position: [human.eyeX, human.eyeY, human.eyeZ + 0.014], scale: [human.shape.eyeScale[0], human.shape.eyeScale[1] * 1.15] },
+        nose: { position: [0, human.noseY, human.noseZ + 0.014], scale: [human.shape.nose[0] * 0.7, human.shape.nose[1] * 0.5] },
+        mouth: { position: [0, human.mouthY, human.mouthZ + 0.016], scale: [human.shape.jaw[0] * 0.42, 0.05] },
       }
     : species === "horse"
       ? {
@@ -712,21 +664,21 @@ function addLocalizedDamageVariants(group: THREE.Group, species: Species) {
     variant.visible = false;
     variant.position.set(...definition.position);
     const cavity = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 22),
-      new THREE.MeshPhysicalMaterial({ color: 0x260202, roughness: 0.22, clearcoat: 0.55, clearcoatRoughness: 0.18 }),
+      new THREE.CircleGeometry(1, 8),
+      lowPolyMaterial(0x260202),
     );
     cavity.scale.set(definition.scale[0], definition.scale[1], 1);
     variant.add(cavity);
     const tornEdge = new THREE.Mesh(
-      new THREE.TorusGeometry(1, 0.24, 8, 22),
-      new THREE.MeshPhysicalMaterial({ color: 0x8e100a, roughness: 0.31, clearcoat: 0.5 }),
+      new THREE.TorusGeometry(1, 0.24, 4, 9),
+      lowPolyMaterial(0x8e100a),
     );
     tornEdge.scale.set(definition.scale[0], definition.scale[1], Math.min(...definition.scale));
     tornEdge.position.z = 0.006;
     tornEdge.rotation.z = (zone.length % 5 - 2) * 0.12;
     variant.add(tornEdge);
     for (let index = 0; index < 7; index += 1) {
-      const tissue = mesh(new THREE.CapsuleGeometry(0.004, 0.026 + (index % 3) * 0.008, 4, 7), index % 3 ? 0xa51a12 : 0xd1b99c, 0.34, 0);
+      const tissue = new THREE.Mesh(new THREE.TetrahedronGeometry(0.012 + (index % 3) * 0.004, 0), lowPolyMaterial(index % 3 ? 0xa51a12 : 0xd1b99c));
       const angle = (index / 7) * Math.PI * 2;
       tissue.position.set(Math.cos(angle) * definition.scale[0] * 0.86, Math.sin(angle) * definition.scale[1] * 0.86, 0.014);
       tissue.rotation.z = angle;
@@ -736,27 +688,28 @@ function addLocalizedDamageVariants(group: THREE.Group, species: Species) {
   });
 }
 
-function buildTarget(target: Target, quality: QualityProfile) {
+function buildTarget(target: Target) {
   const group = target.species === "horse"
     ? buildHorse(target)
     : target.species === "ostrich"
       ? buildOstrich(target)
-      : buildHuman(target, quality);
+      : buildHuman(target);
   const destructionLine: Record<Species, number> = { human: 0.17, horse: 0.08, ostrich: 0.24 };
   group.children.forEach((child) => {
     if (child.position.y > destructionLine[target.species]) child.userData.headVisual = true;
   });
   group.userData.dead = false;
   addDamageAftermathRig(group, target.species);
-  addLocalizedDamageVariants(group, target.species);
+  addLocalizedDamageVariants(group, target);
   if (target.species === "human") {
-    addHitZone(group, "face", [0, 0.34, 0.04], [0.32, 0.4, 0.3]);
-    addHitZone(group, "left-ear", [-0.25, 0.32, 0.03], [0.055, 0.11, 0.055]);
-    addHitZone(group, "right-ear", [0.25, 0.32, 0.03], [0.055, 0.11, 0.055]);
-    addHitZone(group, "left-eye", [-0.105, 0.39, 0.325], [0.06, 0.05, 0.04]);
-    addHitZone(group, "right-eye", [0.105, 0.39, 0.325], [0.06, 0.05, 0.04]);
-    addHitZone(group, "nose", [0, 0.265, 0.35], [0.07, 0.1, 0.06]);
-    addHitZone(group, "mouth", [0, 0.18, 0.33], [0.12, 0.06, 0.05]);
+    const human = lowPolyFaceLandmarks(target.detail);
+    addHitZone(group, "face", [0, 0.34, 0.04], [human.shape.cranium[0] * 1.06, human.shape.cranium[1] * 1.08, 0.29]);
+    addHitZone(group, "left-ear", [-human.earX, human.earY, 0.02], [human.shape.ear[0] * 1.08, human.shape.ear[1] * 1.08, human.shape.ear[2] * 1.35]);
+    addHitZone(group, "right-ear", [human.earX, human.earY, 0.02], [human.shape.ear[0] * 1.08, human.shape.ear[1] * 1.08, human.shape.ear[2] * 1.35]);
+    addHitZone(group, "left-eye", [-human.eyeX, human.eyeY, human.eyeZ - 0.008], [human.shape.eyeScale[0] * 1.04, human.shape.eyeScale[1] * 1.12, 0.04]);
+    addHitZone(group, "right-eye", [human.eyeX, human.eyeY, human.eyeZ - 0.008], [human.shape.eyeScale[0] * 1.04, human.shape.eyeScale[1] * 1.12, 0.04]);
+    addHitZone(group, "nose", [0, human.noseY, human.noseZ - 0.025], [human.shape.nose[0] * 0.72, human.shape.nose[1] * 0.52, human.shape.nose[2] * 0.55]);
+    addHitZone(group, "mouth", [0, human.mouthY, human.mouthZ - 0.012], [human.shape.jaw[0] * 0.43, 0.052, 0.045]);
   } else if (target.species === "horse") {
     addHitZone(group, "face", [0, 0.34, 0.03], [0.29, 0.46, 0.38]);
     addHitZone(group, "left-ear", [-0.16, 0.72, -0.02], [0.1, 0.18, 0.09]);
@@ -773,280 +726,6 @@ function buildTarget(target: Target, quality: QualityProfile) {
   group.position.set(0, -0.02, -1.46);
   group.rotation.y = target.detail % 2 ? -0.035 : 0.035;
   return group;
-}
-
-type ProofHeadAccessor = {
-  bufferView: number;
-  byteOffset?: number;
-  componentType: number;
-  count: number;
-  type: "SCALAR" | "VEC2" | "VEC3";
-};
-
-type ProofHeadGlb = {
-  accessors: ProofHeadAccessor[];
-  bufferViews: Array<{ byteOffset?: number; byteStride?: number }>;
-  meshes: Array<{ primitives: Array<{ attributes: { POSITION: number; TEXCOORD_0?: number }; indices: number }> }>;
-};
-
-function parseProofHeadGlb(buffer: ArrayBuffer) {
-  const view = new DataView(buffer);
-  if (view.byteLength < 20 || view.getUint32(0, true) !== 0x46546c67 || view.getUint32(4, true) !== 2) {
-    throw new Error("Invalid proof-head GLB header");
-  }
-
-  let jsonBytes: Uint8Array | null = null;
-  let binaryOffset = -1;
-  let binaryLength = 0;
-  for (let offset = 12; offset + 8 <= view.byteLength;) {
-    const length = view.getUint32(offset, true);
-    const type = view.getUint32(offset + 4, true);
-    const start = offset + 8;
-    const end = start + length;
-    if (end > view.byteLength) throw new Error("Truncated proof-head GLB chunk");
-    if (type === 0x4e4f534a) jsonBytes = new Uint8Array(buffer, start, length);
-    if (type === 0x004e4942) {
-      binaryOffset = start;
-      binaryLength = length;
-    }
-    offset = end;
-  }
-  if (!jsonBytes || binaryOffset < 0) throw new Error("Proof-head GLB is missing JSON or geometry data");
-
-  const source = JSON.parse(new TextDecoder().decode(jsonBytes).replace(/[\u0000 ]+$/g, "")) as ProofHeadGlb;
-  const primitive = source.meshes[0]?.primitives[0];
-  const positionAccessor = source.accessors[primitive?.attributes.POSITION];
-  const textureAccessor = primitive?.attributes.TEXCOORD_0 === undefined
-    ? undefined
-    : source.accessors[primitive.attributes.TEXCOORD_0];
-  const indexAccessor = source.accessors[primitive?.indices];
-  if (!primitive || !positionAccessor || !indexAccessor || positionAccessor.componentType !== 5126 || positionAccessor.type !== "VEC3") {
-    throw new Error("Proof-head GLB has an unsupported mesh layout");
-  }
-  const positionView = source.bufferViews[positionAccessor.bufferView];
-  const textureView = textureAccessor ? source.bufferViews[textureAccessor.bufferView] : undefined;
-  const indexView = source.bufferViews[indexAccessor.bufferView];
-  if (!positionView || !indexView || indexAccessor.type !== "SCALAR"
-    || (textureAccessor && (!textureView || textureAccessor.componentType !== 5126 || textureAccessor.type !== "VEC2"))) {
-    throw new Error("Proof-head GLB has missing buffer views");
-  }
-
-  const positionStride = positionView.byteStride ?? 12;
-  const positionStart = binaryOffset + (positionView.byteOffset ?? 0) + (positionAccessor.byteOffset ?? 0);
-  const positions = new Float32Array(positionAccessor.count * 3);
-  for (let index = 0; index < positionAccessor.count; index += 1) {
-    const sourceOffset = positionStart + index * positionStride;
-    positions[index * 3] = view.getFloat32(sourceOffset, true);
-    positions[index * 3 + 1] = view.getFloat32(sourceOffset + 4, true);
-    positions[index * 3 + 2] = view.getFloat32(sourceOffset + 8, true);
-  }
-
-  let textureCoordinates: Float32Array | null = null;
-  if (textureAccessor && textureView) {
-    const textureStride = textureView.byteStride ?? 8;
-    const textureStart = binaryOffset + (textureView.byteOffset ?? 0) + (textureAccessor.byteOffset ?? 0);
-    if (textureStart + textureAccessor.count * textureStride > binaryOffset + binaryLength) {
-      throw new Error("Proof-head texture coordinates exceed the binary chunk");
-    }
-    textureCoordinates = new Float32Array(textureAccessor.count * 2);
-    for (let index = 0; index < textureAccessor.count; index += 1) {
-      const sourceOffset = textureStart + index * textureStride;
-      textureCoordinates[index * 2] = view.getFloat32(sourceOffset, true);
-      textureCoordinates[index * 2 + 1] = view.getFloat32(sourceOffset + 4, true);
-    }
-  }
-
-  const indexStart = binaryOffset + (indexView.byteOffset ?? 0) + (indexAccessor.byteOffset ?? 0);
-  const bytesPerIndex = indexAccessor.componentType === 5123 ? 2 : indexAccessor.componentType === 5125 ? 4 : 0;
-  if (!bytesPerIndex) throw new Error("Proof-head GLB uses unsupported index data");
-  if (positionStart + positionAccessor.count * positionStride > binaryOffset + binaryLength
-    || indexStart + indexAccessor.count * bytesPerIndex > binaryOffset + binaryLength) {
-    throw new Error("Proof-head GLB geometry exceeds its binary chunk");
-  }
-  const indices = indexAccessor.componentType === 5123
-    ? new Uint16Array(indexAccessor.count)
-    : new Uint32Array(indexAccessor.count);
-  for (let index = 0; index < indexAccessor.count; index += 1) {
-    const sourceOffset = indexStart + index * bytesPerIndex;
-    indices[index] = bytesPerIndex === 2 ? view.getUint16(sourceOffset, true) : view.getUint32(sourceOffset, true);
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  if (textureCoordinates) geometry.setAttribute("uv", new THREE.BufferAttribute(textureCoordinates, 2));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return geometry;
-}
-
-let makeHumanHeadPromise: Promise<THREE.BufferGeometry | null> | null = null;
-let faceAtlasPromise: Promise<HTMLImageElement | null> | null = null;
-const portraitCanvasCache = new Map<number, HTMLCanvasElement>();
-
-function loadMakeHumanHead() {
-  makeHumanHeadPromise ??= fetch(new URL("assets/faces/makehuman-head.glb", document.baseURI))
-    .then((response) => {
-      if (!response.ok) throw new Error(`Proof-head request failed: ${response.status}`);
-      return response.arrayBuffer();
-    })
-    .then(parseProofHeadGlb)
-    .catch(() => null);
-  return makeHumanHeadPromise;
-}
-
-function loadFaceAtlas() {
-  faceAtlasPromise ??= new Promise<HTMLImageElement | null>((resolve) => {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(null);
-    image.src = new URL("assets/faces/fictional-casting-atlas.png", document.baseURI).href;
-  });
-  return faceAtlasPromise;
-}
-
-function shapeProofHeadGeometry(source: THREE.BufferGeometry, detail: number) {
-  const geometry = source.clone();
-  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
-  const base = detail % 4;
-  const jawWidth = [0.08, -0.035, 0.13, -0.075][base];
-  const cheekWidth = [0.035, 0.075, -0.02, 0.055][base];
-  const noseDepth = [0.025, 0.07, -0.015, 0.045][base];
-  const browDepth = [0.012, -0.018, 0.04, 0.022][base];
-  const asymmetry = ((detail % 5) - 2) * 0.006;
-  for (let index = 0; index < positions.count; index += 1) {
-    let x = positions.getX(index);
-    const y = positions.getY(index);
-    let z = positions.getZ(index);
-    const lowerFace = THREE.MathUtils.clamp((6.88 - y) / 1.18, 0, 1);
-    const cheek = Math.exp(-Math.pow((y - 6.96) / 0.34, 2));
-    const nose = Math.exp(-Math.pow(x / 0.29, 2)) * Math.exp(-Math.pow((y - 7.02) / 0.52, 2));
-    const brow = Math.exp(-Math.pow(x / 0.67, 4)) * Math.exp(-Math.pow((y - 7.48) / 0.2, 2));
-    x *= 1 + lowerFace * jawWidth + cheek * cheekWidth;
-    x += asymmetry * (1 - Math.abs(x)) * Math.exp(-Math.pow((y - 7.05) / 0.95, 2));
-    z += nose * noseDepth + brow * browDepth;
-    positions.setXYZ(index, x, y, z);
-  }
-  positions.needsUpdate = true;
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
-  return geometry;
-}
-
-function portraitCanvas(image: HTMLImageElement, detail: number) {
-  const atlasIndex = detail % 4;
-  const cached = portraitCanvasCache.get(atlasIndex);
-  if (cached) return cached;
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return canvas;
-  const sourceWidth = image.naturalWidth / 2;
-  const sourceHeight = image.naturalHeight / 2;
-  const column = atlasIndex % 2;
-  const row = Math.floor(atlasIndex / 2);
-  context.drawImage(image, column * sourceWidth, row * sourceHeight, sourceWidth, sourceHeight, 0, 0, size, size);
-  const pixels = context.getImageData(0, 0, size, size);
-  const sampleOffsets = [[7, 7], [size - 8, 7], [7, size - 8], [size - 8, size - 8]];
-  const key = sampleOffsets.reduce((sum, [x, y]) => {
-    const offset = (y * size + x) * 4;
-    sum[0] += pixels.data[offset];
-    sum[1] += pixels.data[offset + 1];
-    sum[2] += pixels.data[offset + 2];
-    return sum;
-  }, [0, 0, 0]).map((value) => value / sampleOffsets.length);
-  for (let index = 0; index < size * size; index += 1) {
-    const offset = index * 4;
-    const distance = Math.hypot(
-      pixels.data[offset] - key[0],
-      pixels.data[offset + 1] - key[1],
-      pixels.data[offset + 2] - key[2],
-    );
-    pixels.data[offset + 3] = Math.round(THREE.MathUtils.smoothstep(distance, 13, 46) * 255);
-  }
-  context.putImageData(pixels, 0, 0);
-  portraitCanvasCache.set(atlasIndex, canvas);
-  return canvas;
-}
-
-function createFacePortrait(image: HTMLImageElement, target: Target) {
-  const texture = new THREE.CanvasTexture(portraitCanvas(image, target.detail));
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  const geometry = new THREE.PlaneGeometry(0.68, 0.7, 34, 38);
-  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
-  for (let index = 0; index < positions.count; index += 1) {
-    const x = positions.getX(index);
-    const y = positions.getY(index);
-    const normalizedX = x / 0.34;
-    const normalizedY = y / 0.35;
-    positions.setZ(index, -normalizedX * normalizedX * 0.038 - normalizedY * normalizedY * 0.012);
-  }
-  positions.needsUpdate = true;
-  geometry.computeVertexNormals();
-  const portrait = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      map: texture,
-      transparent: true,
-      alphaTest: 0.04,
-      depthWrite: false,
-      roughness: 0.96,
-      metalness: 0,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-    }),
-  );
-  portrait.name = `photographic-face-${target.detail % 4 + 1}`;
-  portrait.position.set(0, 0.34, 0.355);
-  portrait.userData.facePortrait = true;
-  portrait.userData.headVisual = true;
-  portrait.userData.damageVariant = "intact";
-  portrait.renderOrder = 2;
-  return portrait;
-}
-
-async function hydrateMakeHumanHead(targetGroup: THREE.Group, target: Target, quality: QualityProfile) {
-  if (target.species !== "human") return;
-  targetGroup.userData.faceAssetStatus = "loading-hybrid-face";
-  const [sourceGeometry, atlas] = await Promise.all([loadMakeHumanHead(), loadFaceAtlas()]);
-  if (!sourceGeometry || !atlas || targetGroup.userData.disposed || targetGroup.userData.dead) {
-    if (!targetGroup.userData.disposed) targetGroup.userData.faceAssetStatus = "procedural-fallback";
-    return;
-  }
-
-  const model = new THREE.Group();
-  const base = target.detail % 4;
-  const baseScale: [number, number, number][] = [
-    [0.335, 0.19, 0.16],
-    [0.322, 0.197, 0.158],
-    [0.342, 0.2, 0.165],
-    [0.312, 0.193, 0.157],
-  ];
-  const shellSkin = [0xc18f71, 0xac7352, 0x623e30, 0xb27b5e];
-  const geometry = shapeProofHeadGeometry(sourceGeometry, target.detail);
-  const face = new THREE.Mesh(
-    geometry,
-    createSkinMaterial(shellSkin[base], target.detail, quality.textureSize),
-  );
-  face.name = `clean-head-shell-${base + 1}`;
-  face.userData.headVisual = true;
-  face.userData.damageVariant = "intact";
-  face.castShadow = true;
-  face.receiveShadow = true;
-  model.add(face);
-  model.scale.set(...baseScale[base]);
-  model.position.set(0, 0.39 - 7.28415 * baseScale[base][1], 0.279 - 1.24535 * baseScale[base][2]);
-  model.userData.faceAsset = "makehuman-visible-shell-plus-original-photo-atlas";
-  const portrait = createFacePortrait(atlas, target);
-  targetGroup.children.forEach((child) => {
-    if (child.userData.proceduralFace || child.name === "procedural-hair") child.visible = false;
-  });
-  targetGroup.add(model, portrait);
-  targetGroup.userData.faceAssetStatus = "hybrid-face-loaded";
 }
 
 function grimeMaterial(base: number, accent: number, seed: number, repeatX = 3, repeatY = 3) {
@@ -1673,7 +1352,7 @@ function applyLocalizedDamage(runtime: Runtime, target: Target, shot: Shot) {
         : index % 5 === 0
           ? new THREE.CapsuleGeometry(size * 0.22, size * 1.6, 4, 7)
           : new THREE.SphereGeometry(size * 0.58, 9, 6);
-    const shardMesh = mesh(geometry, tooth ? 0xeadfc8 : colors[index % colors.length], 0.3, 0);
+    const shardMesh = new THREE.Mesh(geometry, lowPolyMaterial(tooth ? 0xeadfc8 : colors[index % colors.length]));
     shardMesh.castShadow = index < 12;
     shardMesh.receiveShadow = false;
     shardMesh.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * spreadX, (Math.random() - 0.5) * spreadY, (Math.random() - 0.5) * 0.14));
@@ -1689,12 +1368,12 @@ function applyLocalizedDamage(runtime: Runtime, target: Target, shot: Shot) {
 
   if (["left-ear", "right-ear", "nose", "muzzle", "beak"].includes(zone)) {
     const detachedGeometry = zone.endsWith("ear")
-      ? new THREE.SphereGeometry(1, 24, 16)
+      ? new THREE.SphereGeometry(1, 6, 4)
       : zone === "beak"
-        ? new THREE.ConeGeometry(0.11, 0.34, 10)
-        : new THREE.ConeGeometry(zone === "muzzle" ? 0.13 : 0.055, zone === "muzzle" ? 0.24 : 0.15, 12);
-    const detachedColor = zone === "beak" ? 0xc48b3b : target.palette[0];
-    const detached = mesh(detachedGeometry, detachedColor, 0.48, 0);
+        ? new THREE.ConeGeometry(0.11, 0.34, 6)
+        : new THREE.ConeGeometry(zone === "muzzle" ? 0.13 : 0.055, zone === "muzzle" ? 0.24 : 0.15, 6);
+    const detachedColor = zone === "beak" ? 0xc48b3b : target.species === "human" ? lowPolyHeadShape(target.detail).skin : target.palette[0];
+    const detached = new THREE.Mesh(detachedGeometry, lowPolyMaterial(detachedColor));
     if (zone.endsWith("ear")) detached.scale.set(0.045, 0.1, 0.03);
     if (zone === "nose" || zone === "muzzle" || zone === "beak") detached.rotation.x = Math.PI / 2;
     detached.position.copy(origin);
@@ -1716,8 +1395,8 @@ function applyLocalizedDamage(runtime: Runtime, target: Target, shot: Shot) {
     const eyeCount = zone === "face" ? 2 : 1;
     for (let index = 0; index < eyeCount; index += 1) {
       const side = eyeCount === 2 ? (index === 0 ? -1 : 1) : zone === "left-eye" ? -1 : 1;
-      const eyeball = mesh(new THREE.SphereGeometry(0.047, 24, 16), 0xe7dfcf, 0.26, 0);
-      const iris = mesh(new THREE.SphereGeometry(0.019, 16, 10), target.detail % 3 === 1 ? 0x43574b : 0x423023, 0.2, 0);
+      const eyeball = new THREE.Mesh(new THREE.SphereGeometry(0.047, 8, 5), lowPolyMaterial(0xe7dfcf));
+      const iris = new THREE.Mesh(new THREE.SphereGeometry(0.019, 6, 4), lowPolyMaterial(target.detail % 3 === 1 ? 0x43574b : 0x423023));
       iris.position.z = 0.041;
       eyeball.add(iris);
       const cord = mesh(new THREE.CapsuleGeometry(0.006, 0.12, 5, 8), 0x7a0a08, 0.35, 0);
@@ -1989,14 +1668,13 @@ function ThreeStage({
     runtime.scene.add(runtime.environment);
     const nextTarget = SEQUENCES[target.detail + 1];
     if (nextTarget) preloadEnvironmentAssets(nextTarget.environmentKind, quality);
-    runtime.target = buildTarget(target, quality);
+    runtime.target = buildTarget(target);
     runtime.targetEnter = 1;
     runtime.hitTargets = [];
     runtime.target.traverse((child) => {
       if (child instanceof THREE.Mesh && child.name.startsWith("hit-zone:")) runtime.hitTargets.push(child);
     });
     runtime.scene.add(runtime.target);
-    void hydrateMakeHumanHead(runtime.target, target, quality);
   }, [target, quality, reducedMotion]);
 
   useEffect(() => {

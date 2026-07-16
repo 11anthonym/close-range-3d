@@ -65,53 +65,35 @@ test("ships both material sizes and records their license provenance", async () 
   assert.match(ledger, /CC0/);
 });
 
-test("loads a clean face shell and an aligned fictional casting atlas", async () => {
-  const [game, ledger, extractor] = await Promise.all([
+test("builds four synchronous geometry-only low-poly human heads", async () => {
+  const [game, ledger] = await Promise.all([
     readFile(gameUrl, "utf8"),
     readFile(new URL("../docs/ASSET_LICENSES.md", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/extract-makehuman-head.mjs", import.meta.url), "utf8"),
   ]);
-  const runtimeHead = new URL("../public/assets/faces/makehuman-head.glb", import.meta.url);
-  const castingAtlas = new URL("../public/assets/faces/fictional-casting-atlas.png", import.meta.url);
-  await Promise.all([access(runtimeHead), access(castingAtlas)]);
-  assert.ok((await stat(runtimeHead)).size > 100_000);
-  assert.ok((await stat(castingAtlas)).size > 1_000_000);
-  assert.match(game, /function parseProofHeadGlb/);
-  assert.match(game, /new DataView\(buffer\)/);
-  assert.match(game, /new THREE\.BufferGeometry\(\)/);
-  assert.match(game, /TEXCOORD_0/);
-  assert.match(game, /geometry\.setAttribute\("uv"/);
-  assert.doesNotMatch(game, /GLTFLoader|MeshoptDecoder/);
-  assert.match(game, /function hydrateMakeHumanHead/);
-  assert.match(game, /function shapeProofHeadGeometry/);
-  assert.match(game, /function portraitCanvas/);
-  assert.match(game, /function createFacePortrait/);
-  assert.match(game, /fictional-casting-atlas\.png/);
-  assert.match(game, /faceAssetStatus = "hybrid-face-loaded"/);
-  assert.match(game, /faceAssetStatus = "procedural-fallback"/);
-  assert.match(extractor, /group !== "body"/);
-  assert.match(extractor, /NECK_CUT_Y = 5\.7/);
-  assert.match(ledger, /MakeHuman visible outer-head shell/);
-  assert.match(ledger, /Original fictional casting atlas/);
-  assert.doesNotMatch(ledger, /makehuman-head-meshopt\.glb/);
-
-  const binary = await readFile(runtimeHead);
-  const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
-  let json;
-  for (let offset = 12; offset + 8 <= view.byteLength;) {
-    const length = view.getUint32(offset, true);
-    const type = view.getUint32(offset + 4, true);
-    if (type === 0x4e4f534a) {
-      json = JSON.parse(new TextDecoder().decode(binary.subarray(offset + 8, offset + 8 + length)).replace(/[\u0000 ]+$/g, ""));
-    }
-    offset += 8 + length;
-  }
-  const primitive = json?.meshes?.[0]?.primitives?.[0];
-  const positions = json?.accessors?.[primitive?.attributes?.POSITION];
-  const uvs = json?.accessors?.[primitive?.attributes?.TEXCOORD_0];
-  assert.ok(primitive && positions && uvs);
-  assert.ok(positions.count > 4_400 && positions.count < 4_700);
-  assert.equal(uvs.count, positions.count);
-  assert.ok(positions.min[0] > -1.1 && positions.max[0] < 1.1);
-  assert.ok(positions.min[1] >= 5.7 && positions.max[1] < 8.6);
+  for (const forbidden of [
+    /photographic-face/,
+    /fictional-casting-atlas/,
+    /portraitCanvas/,
+    /createFacePortrait/,
+    /loadFaceAtlas/,
+    /hydrateMakeHumanHead/,
+    /createSkinMaterial/,
+    /bumpMap/,
+  ]) assert.doesNotMatch(game, forbidden);
+  assert.match(game, /const LOW_POLY_HEAD_SHAPES:[\s\S]*?function lowPolyHeadShape/);
+  const configurations = game.match(/id: "(?:broad-square|long-narrow|heavy-jaw|sharp-chin)"/g) ?? [];
+  assert.equal(configurations.length, 4);
+  for (const style of ["crew", "side-part", "high-top", "receding"]) assert.match(game, new RegExp(`hairStyle: "${style}"`));
+  assert.match(game, /function buildHuman\(target: Target\)/);
+  assert.match(game, /function createNoseWedgeGeometry/);
+  assert.match(game, /function createCheekPlaneGeometry/);
+  assert.match(game, /function countLowPolyHeadTriangles/);
+  assert.match(game, /flatShading: true/);
+  assert.match(game, /faceAssetStatus = "procedural-low-poly-ready"/);
+  assert.match(game, /lowPolyFaceLandmarks\(target\.detail\)/);
+  assert.match(game, /new THREE\.SphereGeometry\(1, 12, 8\)/);
+  assert.doesNotMatch(game, /SphereGeometry\(1, 112, 88\)/);
+  assert.doesNotMatch(ledger, /MakeHuman|casting atlas|portrait/i);
+  await assert.rejects(access(new URL("../public/assets/faces/fictional-casting-atlas.png", import.meta.url)));
+  await assert.rejects(access(new URL("../public/assets/faces/makehuman-head.glb", import.meta.url)));
 });
