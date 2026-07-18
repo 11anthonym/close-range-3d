@@ -19,11 +19,12 @@ test("server-renders the Close Range game shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Close Range — 3D Browser Game<\/title>/i);
-  assert.match(html, /PLAY ONLINE NOW/);
+  assert.match(html, /MAIN MENU/);
+  assert.match(html, /SOLO CAMPAIGN/);
   assert.match(html, /24 SEQUENCES/);
   assert.match(html, /SHOOT THE FACE\. OR THE EAR\./);
   assert.match(html, /THE MOST IMPORTANT GAME OF THE YEAR/);
-  assert.match(html, /UNPARALLELED MULTIPLAYER/);
+  assert.match(html, /MULTIPLAYER/);
   assert.match(html, /Fan-made browser tribute/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -81,9 +82,35 @@ test("uses faceted low-poly heads and commercial-inspired comedy systems", async
   assert.match(source, /ANIMAL FACE SIDE MISSION/);
   assert.match(source, /CLOSE RANGE 2/);
   assert.match(source, /CHAINSAW DAWN/);
-  assert.match(config, /GameMode = "solo" \| "couch"/);
+  assert.match(config, /GameMode = "solo" \| "couch" \| "challenge"/);
   assert.match(source, /setPlayerScores/);
   assert.match(source, /phase === "complete"/);
+});
+
+test("provides a real main menu, two-camera split-screen, and static challenge links", async () => {
+  const [source, config, styles, multiplayerDoc] = await Promise.all([
+    readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/gameConfig.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../docs/MULTIPLAYER.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(source, /aria-label="Main menu"/);
+  assert.match(source, /SOLO CAMPAIGN/);
+  assert.match(source, /SPLIT-SCREEN VERSUS/);
+  assert.match(source, /function SplitScreenVersus/);
+  assert.match(source, /aria-label="Two player split-screen versus"/);
+  assert.match(source, /<ThreeStage[\s\S]*?<ThreeStage/);
+  assert.match(source, /splitTargetIndexFor\(player, current\.progress\)/);
+  assert.match(source, /frameRate=\{24\}/);
+  assert.match(source, /parseChallengeScore/);
+  assert.match(source, /buildChallengeUrl/);
+  assert.match(source, /navigator\.clipboard\.writeText\(challengeUrl\)/);
+  assert.match(config, /GameMode = "solo" \| "couch" \| "challenge"/);
+  assert.match(styles, /grid-template-columns: 1fr 1fr/);
+  assert.match(styles, /grid-template-rows: 1fr 1fr/);
+  assert.match(styles, /height: 100dvh/);
+  assert.match(multiplayerDoc, /static GitHub Pages game/);
+  assert.match(multiplayerDoc, /signaling or relay service/);
 });
 
 test("keeps the 3D scene readable on desktop and phone displays", async () => {

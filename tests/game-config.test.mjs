@@ -97,3 +97,13 @@ test("builds four synchronous geometry-only low-poly human heads", async () => {
   await assert.rejects(access(new URL("../public/assets/faces/fictional-casting-atlas.png", import.meta.url)));
   await assert.rejects(access(new URL("../public/assets/faces/makehuman-head.glb", import.meta.url)));
 });
+
+test("keeps browser multiplayer bounded and free of server-only dependencies", async () => {
+  const game = await readFile(gameUrl, "utf8");
+  assert.match(game, /CHALLENGE_VERSION = "v1"/);
+  assert.match(game, /MAX_CHALLENGE_SCORE = 9_999_999/);
+  assert.match(game, /new URLSearchParams\(search\)/);
+  assert.match(game, /score >= 0 && score <= MAX_CHALLENGE_SCORE/);
+  assert.match(game, /url\.searchParams\.set\(CHALLENGE_QUERY_KEY/);
+  assert.doesNotMatch(game, /new WebSocket|socket\.io|peerjs/i);
+});
