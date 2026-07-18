@@ -1,6 +1,6 @@
 export type Phase = "title" | "intro" | "chapter" | "playing" | "reloading" | "transition" | "complete";
 export type Species = "human" | "horse" | "ostrich";
-export type GameMode = "solo" | "couch";
+export type GameMode = "solo" | "couch" | "challenge";
 export type WeaponKind = "revolver" | "smg" | "shotgun";
 export type EnvironmentKind = "alley" | "warehouse" | "cubicle" | "finale";
 export type EntryKind = "left" | "below" | "static";

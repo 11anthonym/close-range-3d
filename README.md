@@ -21,6 +21,20 @@ Once GitHub Pages is enabled, the browser build is available at:
 - Complete all 24 point-blank encounters.
 - Sound is synthesized in the browser; no commercial recording or voice track is used.
 
+The main menu also includes two multiplayer formats:
+
+- **Split-screen versus** renders two independent Three.js views. Player 1 uses
+  the left view and Player 2 uses the right; on a phone the views stack
+  vertically. Each player gets 12 separate encounters, ammunition, localized
+  damage, and a personal score. A successful hit hands the turn to the other
+  player.
+- **Challenge link** is asynchronous web multiplayer for the static GitHub
+  Pages build. Finish a 24-target run, copy the generated URL, and send it to a
+  friend. The URL opens the same fixed campaign with your score displayed as
+  the target to beat. It needs no account, matchmaking service, or game server.
+
+See [Multiplayer design](docs/MULTIPLAYER.md) for the hosting and fairness model.
+
 On phones, drag the reticle and tap to fire. The `VISUAL` control cycles through
 `AUTO`, `LOW`, and `HIGH`; Auto considers pointer type, screen width, available
 memory, and CPU cores. Low reduces shadows, pixels, rain, debris, and foreground
@@ -49,6 +63,7 @@ Build and verify:
 
 ```bash
 pnpm test
+pnpm lint
 pnpm build:pages
 ```
 

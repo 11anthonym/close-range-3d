@@ -20,6 +20,26 @@ import {
 } from "./gameConfig";
 
 type Target = SequenceDefinition;
+type MenuView = "main" | "multiplayer";
+
+const CHALLENGE_QUERY_KEY = "challenge";
+const CHALLENGE_VERSION = "v1";
+const MAX_CHALLENGE_SCORE = 9_999_999;
+
+function parseChallengeScore(search: string) {
+  const encoded = new URLSearchParams(search).get(CHALLENGE_QUERY_KEY);
+  const match = encoded?.match(/^v1-([0-9a-z]+)$/i);
+  if (!match) return null;
+  const score = Number.parseInt(match[1], 36);
+  return Number.isSafeInteger(score) && score >= 0 && score <= MAX_CHALLENGE_SCORE ? score : null;
+}
+
+function buildChallengeUrl(href: string, score: number) {
+  const url = new URL(href);
+  url.searchParams.set(CHALLENGE_QUERY_KEY, `${CHALLENGE_VERSION}-${Math.max(0, Math.round(score)).toString(36)}`);
+  url.hash = "";
+  return url.toString();
+}
 
 const INTRO = [
   "YOUR NAME IS A.J.",
@@ -1441,6 +1461,8 @@ function ThreeStage({
   quality,
   aimRef,
   hitTestRef,
+  splitScreen = false,
+  frameRate = 60,
 }: {
   target: Target;
   shot: Shot;
@@ -1448,6 +1470,8 @@ function ThreeStage({
   quality: QualityProfile;
   aimRef: MutableRefObject<Aim>;
   hitTestRef: MutableRefObject<HitTest | null>;
+  splitScreen?: boolean;
+  frameRate?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<Runtime | null>(null);
@@ -1457,7 +1481,7 @@ function ThreeStage({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
+    const camera = new THREE.PerspectiveCamera(splitScreen ? 60 : 50, 1, 0.05, 80);
     camera.position.set(0, 0.08, 0);
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatio));
@@ -1517,6 +1541,7 @@ function ThreeStage({
       const height = canvas.clientHeight || window.innerHeight;
       renderer.setSize(width, height, false);
       camera.aspect = width / Math.max(height, 1);
+      camera.fov = splitScreen ? (camera.aspect < 0.85 ? 64 : 60) : (camera.aspect < 0.7 ? 78 : 50);
       camera.updateProjectionMatrix();
     };
     const observer = new ResizeObserver(resize);
@@ -1525,6 +1550,10 @@ function ThreeStage({
 
     let previous = performance.now();
     const animate = (now: number) => {
+      if (now - previous < 1000 / frameRate) {
+        runtime.frame = requestAnimationFrame(animate);
+        return;
+      }
       const delta = Math.min((now - previous) / 1000, 0.04);
       previous = now;
       const t = now / 1000;
@@ -1637,7 +1666,7 @@ function ThreeStage({
       runtimeRef.current = null;
       hitTestRef.current = null;
     };
-  }, [aimRef, hitTestRef, quality, reducedMotion, target.weaponKind]);
+  }, [aimRef, frameRate, hitTestRef, quality, reducedMotion, splitScreen, target.weaponKind]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -1792,8 +1821,256 @@ function useShotAudio(muted: boolean) {
   return { ensureContext, playShot, playStinger };
 }
 
+type SplitPlayerState = {
+  progress: number;
+  score: number;
+  ammo: number;
+  shot: Shot;
+  feedback: string;
+  feedbackDetail: string;
+  status: "playing" | "reloading" | "hit" | "complete";
+};
+
+type SplitScreenResult = {
+  playerScores: [number, number];
+  shotsFired: number;
+  specialHits: number;
+  partsFound: string[];
+};
+
+function splitTargetIndexFor(player: 0 | 1, progress: number) {
+  return Math.min(23, progress * 2 + player);
+}
+
+function SplitScreenVersus({
+  quality,
+  reducedMotion,
+  playShot,
+  onComplete,
+}: {
+  quality: QualityProfile;
+  reducedMotion: boolean;
+  playShot: (hit: boolean, species: Species, zone: HitZone, weaponKind: WeaponKind) => void;
+  onComplete: (result: SplitScreenResult) => void;
+}) {
+  const initialAmmo = WEAPON_PROFILES[SEQUENCES[0].weaponKind].capacity;
+  const [players, setPlayers] = useState<[SplitPlayerState, SplitPlayerState]>([
+    { progress: 0, score: 0, ammo: initialAmmo, shot: { tick: 0, hit: false, zone: null }, feedback: "", feedbackDetail: "", status: "playing" },
+    { progress: 0, score: 0, ammo: initialAmmo, shot: { tick: 0, hit: false, zone: null }, feedback: "", feedbackDetail: "", status: "playing" },
+  ]);
+  const [activePlayer, setActivePlayer] = useState<0 | 1>(0);
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const leftCrosshairRef = useRef<HTMLDivElement>(null);
+  const rightCrosshairRef = useRef<HTMLDivElement>(null);
+  const leftAimRef = useRef<Aim>({ x: 0, y: 0 });
+  const rightAimRef = useRef<Aim>({ x: 0, y: 0 });
+  const leftHitTestRef = useRef<HitTest | null>(null);
+  const rightHitTestRef = useRef<HitTest | null>(null);
+  const lockedRef = useRef(false);
+  const transitionTimerRef = useRef<number | null>(null);
+  const reloadTimerRef = useRef<[number | null, number | null]>([null, null]);
+  const progressRef = useRef<[number, number]>([0, 0]);
+  const scoreRef = useRef<[number, number]>([0, 0]);
+  const shotsRef = useRef(0);
+  const specialHitsRef = useRef(0);
+  const partsRef = useRef(new Set<string>());
+
+  const splitQuality = useMemo<QualityProfile>(() => ({
+    ...quality,
+    pixelRatio: Math.min(quality.pixelRatio, 1.35),
+    mistParticles: Math.max(60, Math.floor(quality.mistParticles * 0.62)),
+    chunks: Math.max(10, Math.floor(quality.chunks * 0.62)),
+    foregroundSheets: Math.max(1, Math.floor(quality.foregroundSheets * 0.7)),
+  }), [quality]);
+
+  const updatePlayer = useCallback((player: 0 | 1, update: (current: SplitPlayerState) => SplitPlayerState) => {
+    setPlayers((current) => {
+      const next: [SplitPlayerState, SplitPlayerState] = [current[0], current[1]];
+      next[player] = update(current[player]);
+      return next;
+    });
+  }, []);
+
+  const updateAimFor = useCallback((player: 0 | 1, event: React.PointerEvent<HTMLElement>) => {
+    const panel = player === 0 ? leftPanelRef.current : rightPanelRef.current;
+    if (!panel) return;
+    const bounds = panel.getBoundingClientRect();
+    const localX = THREE.MathUtils.clamp(event.clientX - bounds.left, 0, bounds.width);
+    const localY = THREE.MathUtils.clamp(event.clientY - bounds.top, 0, bounds.height);
+    const aim = player === 0 ? leftAimRef.current : rightAimRef.current;
+    aim.x = (localX / Math.max(bounds.width, 1)) * 2 - 1;
+    aim.y = -((localY / Math.max(bounds.height, 1)) * 2 - 1);
+    const crosshair = player === 0 ? leftCrosshairRef.current : rightCrosshairRef.current;
+    if (crosshair) {
+      crosshair.style.left = `${localX}px`;
+      crosshair.style.top = `${localY}px`;
+      const hitTest = player === 0 ? leftHitTestRef.current : rightHitTestRef.current;
+      crosshair.classList.toggle("is-on-target", Boolean(hitTest?.().hit));
+    }
+  }, []);
+
+  const reloadPlayer = useCallback((player: 0 | 1, weaponKind: WeaponKind) => {
+    if (reloadTimerRef.current[player]) window.clearTimeout(reloadTimerRef.current[player] ?? undefined);
+    updatePlayer(player, (current) => ({ ...current, status: "reloading", feedback: "RELOADING", feedbackDetail: "700 MS NARRATIVE RELOAD" }));
+    reloadTimerRef.current[player] = window.setTimeout(() => {
+      updatePlayer(player, (current) => ({ ...current, ammo: WEAPON_PROFILES[weaponKind].capacity, status: "playing", feedback: "", feedbackDetail: "" }));
+      reloadTimerRef.current[player] = null;
+    }, 700);
+  }, [updatePlayer]);
+
+  const fireFor = useCallback((player: 0 | 1) => {
+    if (lockedRef.current || activePlayer !== player) return;
+    const current = players[player];
+    if (current.status !== "playing" || current.progress >= 12) return;
+    const targetIndex = splitTargetIndexFor(player, current.progress);
+    const target = SEQUENCES[targetIndex];
+    const weapon = WEAPON_PROFILES[target.weaponKind];
+    if (current.ammo < weapon.ammoCost) {
+      reloadPlayer(player, target.weaponKind);
+      return;
+    }
+    const hitTest = player === 0 ? leftHitTestRef.current : rightHitTestRef.current;
+    const hitResult = hitTest?.() ?? { hit: false, zone: null };
+    const hit = hitResult.hit;
+    const zone = hitResult.zone ?? "face";
+    const nextAmmo = current.ammo - weapon.ammoCost;
+    shotsRef.current += 1;
+    playShot(hit, target.species, zone, target.weaponKind);
+    const nextShot: Shot = {
+      tick: current.shot.tick + 1,
+      hit,
+      zone: hit ? zone : null,
+      point: hit ? hitResult.point : undefined,
+      direction: hit ? hitResult.direction : undefined,
+    };
+    if (!hit) {
+      updatePlayer(player, (value) => ({ ...value, ammo: nextAmmo, shot: nextShot, feedback: "CLOSER.", feedbackDetail: "NO FACIAL CONTACT" }));
+      if (nextAmmo < weapon.ammoCost) reloadPlayer(player, target.weaponKind);
+      return;
+    }
+
+    lockedRef.current = true;
+    const category = zoneCategory(zone);
+    const points = ZONE_POINTS[zone] + targetIndex * 125;
+    const nextProgress = current.progress + 1;
+    const nextScore = current.score + points;
+    progressRef.current[player] = nextProgress;
+    scoreRef.current[player] = nextScore;
+    if (zone !== "face") specialHitsRef.current += 1;
+    partsRef.current.add(category);
+    updatePlayer(player, (value) => ({
+      ...value,
+      ammo: nextAmmo,
+      score: nextScore,
+      shot: nextShot,
+      status: "hit",
+      feedback: zone === "face" ? PRAISE[targetIndex % PRAISE.length] : ZONE_FEEDBACK[zone],
+      feedbackDetail: `+${points.toLocaleString()} // ${zoneLabel(zone)}`,
+    }));
+
+    transitionTimerRef.current = window.setTimeout(() => {
+      if (progressRef.current[0] >= 12 && progressRef.current[1] >= 12) {
+        onComplete({
+          playerScores: [scoreRef.current[0], scoreRef.current[1]],
+          shotsFired: shotsRef.current,
+          specialHits: specialHitsRef.current,
+          partsFound: [...partsRef.current],
+        });
+        return;
+      }
+      const nextTarget = SEQUENCES[splitTargetIndexFor(player, nextProgress)];
+      const nextWeapon = WEAPON_PROFILES[nextTarget.weaponKind];
+      const resetAmmo = nextTarget.weaponKind !== target.weaponKind || nextAmmo < nextWeapon.ammoCost ? nextWeapon.capacity : nextAmmo;
+      updatePlayer(player, (value) => ({
+        ...value,
+        progress: nextProgress,
+        ammo: resetAmmo,
+        shot: { tick: value.shot.tick, hit: false, zone: null },
+        status: nextProgress >= 12 ? "complete" : "playing",
+        feedback: nextProgress >= 12 ? "SIDE COMPLETE" : "",
+        feedbackDetail: "",
+      }));
+      const other = player === 0 ? 1 : 0;
+      setActivePlayer(progressRef.current[other] < 12 ? other : player);
+      lockedRef.current = false;
+    }, reducedMotion ? 420 : 1050);
+  }, [activePlayer, onComplete, playShot, players, reducedMotion, reloadPlayer, updatePlayer]);
+
+  useEffect(() => {
+    const handleKeyboard = (event: KeyboardEvent) => {
+      if (event.code !== "Space" && event.code !== "Enter") return;
+      event.preventDefault();
+      fireFor(activePlayer);
+    };
+    window.addEventListener("keydown", handleKeyboard);
+    return () => window.removeEventListener("keydown", handleKeyboard);
+  }, [activePlayer, fireFor]);
+
+  useEffect(() => () => {
+    if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
+    reloadTimerRef.current.forEach((timer) => {
+      if (timer) window.clearTimeout(timer);
+    });
+  }, []);
+
+  return (
+    <section className="split-screen-arena" aria-label="Two player split-screen versus">
+      {([0, 1] as const).map((player) => {
+        const state = players[player];
+        const targetIndex = splitTargetIndexFor(player, state.progress);
+        const target = SEQUENCES[targetIndex];
+        const weapon = WEAPON_PROFILES[target.weaponKind];
+        return (
+          <div
+            key={player}
+            ref={player === 0 ? leftPanelRef : rightPanelRef}
+            className={`split-player-panel player-${player + 1} ${activePlayer === player ? "is-active" : "is-waiting"}`}
+            onPointerMove={(event) => {
+              event.stopPropagation();
+              updateAimFor(player, event);
+            }}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              updateAimFor(player, event);
+              fireFor(player);
+            }}
+          >
+            <ThreeStage
+              target={target}
+              shot={state.shot}
+              reducedMotion={reducedMotion}
+              quality={splitQuality}
+              aimRef={player === 0 ? leftAimRef : rightAimRef}
+              hitTestRef={player === 0 ? leftHitTestRef : rightHitTestRef}
+              splitScreen
+              frameRate={24}
+            />
+            <div className="split-vignette" />
+            <div ref={player === 0 ? leftCrosshairRef : rightCrosshairRef} className="crosshair" aria-hidden="true"><i /><b /></div>
+            <header className="split-player-header">
+              <span>PLAYER {player + 1}</span>
+              <strong>{state.score.toLocaleString()}</strong>
+              <small>{state.progress}/12 TARGETS</small>
+            </header>
+            <div className="split-location"><strong>{target.codename}</strong><span>{target.location}</span></div>
+            <div className={`split-feedback ${state.feedback ? "is-visible" : ""}`}><strong>{state.feedback}</strong><span>{state.feedbackDetail}</span></div>
+            <div className="split-weapon"><span>{weapon.label}</span><strong>{state.ammo}/{weapon.capacity}</strong></div>
+            <div className="split-turn-banner">{activePlayer === player ? "YOUR TURN // AIM AND FIRE" : state.status === "complete" ? "SIDE COMPLETE" : "OPPONENT FIRING"}</div>
+          </div>
+        );
+      })}
+      <div className="split-divider"><span>VERSUS</span></div>
+    </section>
+  );
+}
+
 export default function CloseRangeGame() {
   const [phase, setPhase] = useState<Phase>("title");
+  const [menuView, setMenuView] = useState<MenuView>(() => {
+    if (typeof window === "undefined") return "main";
+    return parseChallengeScore(window.location.search) === null ? "main" : "multiplayer";
+  });
   const [targetIndex, setTargetIndex] = useState(0);
   const [introLine, setIntroLine] = useState(0);
   const [shot, setShot] = useState<Shot>({ tick: 0, hit: false, zone: null });
@@ -1809,6 +2086,11 @@ export default function CloseRangeGame() {
   const [gameMode, setGameMode] = useState<GameMode>("solo");
   const [activePlayer, setActivePlayer] = useState<1 | 2>(1);
   const [playerScores, setPlayerScores] = useState<[number, number]>([0, 0]);
+  const [challengeScore, setChallengeScore] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    return parseChallengeScore(window.location.search);
+  });
+  const [challengeShareStatus, setChallengeShareStatus] = useState("");
   const [muted, setMuted] = useState(false);
   const [qualityMode, setQualityMode] = useState<QualityMode>(() => {
     if (typeof window === "undefined") return "auto";
@@ -1867,6 +2149,7 @@ export default function CloseRangeGame() {
     setFeedback("");
     setFeedbackDetail("");
     setFeedbackKind("hit");
+    setChallengeShareStatus("");
     aimRef.current = { x: 0, y: 0 };
     if (crosshairRef.current) {
       crosshairRef.current.style.left = "50%";
@@ -1875,6 +2158,45 @@ export default function CloseRangeGame() {
     lockedRef.current = false;
     setPhase("intro");
   }, [ensureContext]);
+
+  const removeChallengeFromAddress = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete(CHALLENGE_QUERY_KEY);
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  const startFreshChallenge = useCallback(() => {
+    removeChallengeFromAddress();
+    setChallengeScore(null);
+    begin("challenge");
+  }, [begin, removeChallengeFromAddress]);
+
+  const returnToMainMenu = useCallback(() => {
+    if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
+    if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
+    if (chapterTimerRef.current) window.clearTimeout(chapterTimerRef.current);
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+    lockedRef.current = false;
+    setFeedback("");
+    setFeedbackDetail("");
+    setChallengeShareStatus("");
+    setChallengeScore(null);
+    setMenuView("main");
+    removeChallengeFromAddress();
+    setPhase("title");
+  }, [removeChallengeFromAddress]);
+
+  const finishSplitScreenVersus = useCallback((result: SplitScreenResult) => {
+    setPlayerScores(result.playerScores);
+    setScore(result.playerScores[0] + result.playerScores[1]);
+    setShotsFired(result.shotsFired);
+    setSpecialHits(result.specialHits);
+    setPartsFound(result.partsFound);
+    setTargetIndex(SEQUENCES.length - 1);
+    lockedRef.current = true;
+    setPhase("complete");
+  }, []);
 
   useEffect(() => {
     if (phase !== "intro") return;
@@ -2004,11 +2326,11 @@ export default function CloseRangeGame() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.code === "Space" || event.code === "Enter") && phase === "playing") {
+      if ((event.code === "Space" || event.code === "Enter") && phase === "playing" && gameMode !== "couch") {
         event.preventDefault();
         fire();
       }
-      if (event.code === "Space" && phase === "title") {
+      if (event.code === "Space" && phase === "title" && menuView === "main") {
         event.preventDefault();
         begin("solo");
       }
@@ -2021,16 +2343,32 @@ export default function CloseRangeGame() {
         skipChapter();
       }
       if (event.code === "Escape" && phase === "intro") skipIntro();
+      if (event.code === "Escape" && phase === "title" && menuView === "multiplayer") setMenuView("main");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [begin, fire, gameMode, phase, skipChapter, skipIntro]);
+  }, [begin, fire, gameMode, menuView, phase, skipChapter, skipIntro]);
 
   const rank = useMemo(() => {
     if (score >= 56000) return "CULTURAL LANDMARK";
     if (score >= 48000) return "UNFLINCHING";
     return "POINT-BLANK";
   }, [score]);
+
+  const challengeUrl = useMemo(() => {
+    if (phase !== "complete" || gameMode !== "challenge" || typeof window === "undefined") return "";
+    return buildChallengeUrl(window.location.href, score);
+  }, [gameMode, phase, score]);
+
+  const copyChallengeLink = useCallback(async () => {
+    if (!challengeUrl) return;
+    try {
+      await navigator.clipboard.writeText(challengeUrl);
+      setChallengeShareStatus("CHALLENGE LINK COPIED");
+    } catch {
+      setChallengeShareStatus("COPY THE LINK FROM THE FIELD");
+    }
+  }, [challengeUrl]);
 
   const bloodDrops = useMemo(() => Array.from({ length: qualityTier === "high" ? 42 : qualityTier === "low" ? 18 : 30 }, (_, index) => {
     const random = seededRandom(shot.tick * 43 + index * 17 + 5);
@@ -2075,14 +2413,18 @@ export default function CloseRangeGame() {
   };
 
   return (
-    <main className={`game-shell phase-${phase}`}>
+    <main className={`game-shell phase-${phase} mode-${gameMode}`}>
       <div
         className={`game-frame ${phase === "transition" && shot.hit ? "is-hit" : ""}`}
         ref={frameRef}
         onPointerMove={updateAim}
         onPointerDown={handleStagePointer}
       >
-        <ThreeStage target={target} shot={shot} reducedMotion={reducedMotion} quality={quality} aimRef={aimRef} hitTestRef={hitTestRef} />
+        {gameMode === "couch" && phase === "playing" ? (
+          <SplitScreenVersus quality={quality} reducedMotion={reducedMotion} playShot={playShot} onComplete={finishSplitScreenVersus} />
+        ) : (
+          <ThreeStage target={target} shot={shot} reducedMotion={reducedMotion} quality={quality} aimRef={aimRef} hitTestRef={hitTestRef} />
+        )}
         <div className="vignette" />
         <div className="film-grain" />
         {phase === "transition" && shot.hit && (
@@ -2109,8 +2451,11 @@ export default function CloseRangeGame() {
         <button className="quality-toggle" type="button" onClick={cycleQuality} aria-label={`Visual quality ${qualityMode}, resolved ${qualityTier}`}>
           VISUAL {qualityMode.toUpperCase()} <span>{qualityTier.toUpperCase()}</span>
         </button>
+        {phase !== "title" && (
+          <button className="main-menu-toggle" type="button" onClick={returnToMainMenu}>MAIN MENU</button>
+        )}
 
-        {(phase === "playing" || phase === "reloading" || phase === "transition") && (
+        {(phase === "playing" || phase === "reloading" || phase === "transition") && gameMode !== "couch" && (
           <section className="hud" aria-label="Game status">
             <div ref={crosshairRef} className="crosshair" aria-hidden="true"><i /><b /></div>
             <div
@@ -2142,6 +2487,12 @@ export default function CloseRangeGame() {
                 <strong>PLAYER {activePlayer}{" // "}{playerScores[activePlayer - 1].toLocaleString()}</strong>
               </div>
             )}
+            {gameMode === "challenge" && (
+              <div className="player-turn challenge-turn">
+                <span>CHALLENGE LINK</span>
+                <strong>{challengeScore === null ? "SET THE SCORE" : `BEAT ${challengeScore.toLocaleString()}`}</strong>
+              </div>
+            )}
             <div className="anatomy-strip" aria-label="Available facial targets">
               <span>THE ENTIRE HEAD IS OPEN{" // "}{99_999 - targetIndex} FACES REMAIN</span>
               <div>{availableZoneCategories(target.species).map((zone) => <i key={zone}>{zone}</i>)}</div>
@@ -2161,18 +2512,48 @@ export default function CloseRangeGame() {
         )}
 
         {phase === "title" && (
-          <section className="title-screen">
+          <section className={`title-screen menu-view-${menuView}`}>
+            <p className="menu-label">MAIN MENU</p>
             <p className="eyebrow">THE MOST IMPORTANT GAME OF THE YEAR // AN UNOFFICIAL 3D TRIBUTE</p>
             <h1><span>CLOSE</span><span>RANGE</span></h1>
             <div className="review-stamp review-one"><strong>“INCREDIBLE”</strong><small>OGN.COM</small></div>
             <div className="review-stamp review-two"><strong>“BREATHTAKING”</strong><small>GAME INSIDER</small></div>
-            <p className="tagline">START THE EPIC JOURNEY NOW!</p>
-            <p className="open-face-copy">SHOOT THE FACE. OR THE EAR. THE ENTIRE HEAD IS OPEN.</p>
-            <div className="mode-buttons">
-              <button className="primary-button" type="button" onClick={() => begin("solo")}><span>PLAY ONLINE NOW</span><kbd>SPACE</kbd></button>
-              <button className="secondary-button" type="button" onClick={() => begin("couch")}><span>UNPARALLELED MULTIPLAYER</span><small>TAKE TURNS ON ONE MOUSE</small></button>
-            </div>
-            <div className="title-meta"><span>24 SEQUENCES</span><span>OPEN-ENDED FACIAL COMBAT</span><span>POINT-BLANK 3D</span></div>
+            {menuView === "main" ? (
+              <>
+                <p className="tagline">START THE EPIC JOURNEY NOW!</p>
+                <p className="open-face-copy">SHOOT THE FACE. OR THE EAR. THE ENTIRE HEAD IS OPEN.</p>
+                <nav className="mode-buttons main-menu-actions" aria-label="Main menu">
+                  <button className="primary-button" type="button" onClick={() => begin("solo")}><span>SOLO CAMPAIGN</span><kbd>SPACE</kbd></button>
+                  <button className="secondary-button" type="button" onClick={() => setMenuView("multiplayer")}><span>MULTIPLAYER</span><small>SPLIT-SCREEN OR CHALLENGE LINK</small></button>
+                </nav>
+                <div className="title-meta"><span>24 SEQUENCES</span><span>OPEN-ENDED FACIAL COMBAT</span><span>POINT-BLANK 3D</span></div>
+              </>
+            ) : (
+              <section className="multiplayer-menu" aria-labelledby="multiplayer-heading">
+                <p className="multiplayer-kicker">UNPARALLELED WEB INTERACTION</p>
+                <h2 id="multiplayer-heading">MULTIPLAYER</h2>
+                {challengeScore !== null && (
+                  <div className="challenge-invite" role="status">
+                    <span>CHALLENGE RECEIVED</span>
+                    <strong>{challengeScore.toLocaleString()}</strong>
+                    <small>SCORE TO BEAT // SAME 24-TARGET ROUTE</small>
+                    <button className="primary-button" type="button" onClick={() => begin("challenge")}><span>ACCEPT CHALLENGE</span><kbd>ENTER</kbd></button>
+                  </div>
+                )}
+                <div className="multiplayer-options">
+                  <button className="secondary-button mode-card" type="button" onClick={() => begin("couch")}>
+                    <span>SPLIT-SCREEN VERSUS</span>
+                    <small>2 PLAYERS // 2 LIVE 3D VIEWS // 12 TARGETS EACH</small>
+                  </button>
+                  <button className="secondary-button mode-card" type="button" onClick={startFreshChallenge}>
+                    <span>NEW CHALLENGE LINK</span>
+                    <small>PLAY, COPY YOUR SCORE LINK, SEND IT TO A FRIEND</small>
+                  </button>
+                </div>
+                <p className="multiplayer-explainer">Split-screen runs both players on one device. Challenge links work across browsers without an account or game server; live remote play would require a hosted relay.</p>
+                <button className="menu-back-button" type="button" onClick={() => setMenuView("main")}>BACK TO MAIN MENU <kbd>ESC</kbd></button>
+              </section>
+            )}
             <p className="attribution">Fan-made browser tribute. Original concept by The Onion. No affiliation.</p>
           </section>
         )}
@@ -2212,6 +2593,13 @@ export default function CloseRangeGame() {
                   ? " The unparalleled interaction ends in a tie. Both couches win."
                   : ` Player ${playerScores[0] > playerScores[1] ? 1 : 2} wins the unparalleled interaction.`
               )}
+              {gameMode === "challenge" && challengeScore !== null && (
+                score > challengeScore
+                  ? " You beat the challenge score. This is what friendship was invented for."
+                  : score === challengeScore
+                    ? " You tied the challenge score exactly. Statistically, this is probably a conspiracy."
+                    : " The challenge score survives. Your face geography requires further study."
+              )}
             </p>
             <div className="result-grid result-grid-four">
               <div><small>SEQUENCES</small><strong>24 / 24</strong></div>
@@ -2220,12 +2608,34 @@ export default function CloseRangeGame() {
               <div><small>PARTS FOUND</small><strong>{partsFound.length}</strong></div>
             </div>
             <p className="result-rating">RATING // <strong>{rank}</strong></p>
+            {gameMode === "couch" && (
+              <div className="multiplayer-result" aria-label="Split-screen final scores">
+                <span>PLAYER 1 <strong>{playerScores[0].toLocaleString()}</strong></span>
+                <b>FINAL VERSUS</b>
+                <span>PLAYER 2 <strong>{playerScores[1].toLocaleString()}</strong></span>
+              </div>
+            )}
+            {gameMode === "challenge" && (
+              <div className="challenge-result">
+                <div>
+                  <span>YOUR SCORE <strong>{score.toLocaleString()}</strong></span>
+                  <span>{challengeScore === null ? "SHARE THIS RUN" : `TARGET ${challengeScore.toLocaleString()}`}</span>
+                </div>
+                <label htmlFor="challenge-link">CHALLENGE LINK</label>
+                <input id="challenge-link" value={challengeUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
+                <button className="secondary-button" type="button" onClick={copyChallengeLink}>COPY CHALLENGE LINK</button>
+                <small role="status" aria-live="polite">{challengeShareStatus || "OPENS THE SAME CAMPAIGN WITH YOUR SCORE TO BEAT"}</small>
+              </div>
+            )}
             <div className="sequel-stinger">
               <small>NEXT FALL // A COMPLETELY DIFFERENT KIND OF DEPTH</small>
               <strong>CLOSE RANGE 2</strong>
               <span>CHAINSAW DAWN</span>
             </div>
-            <button className="primary-button" type="button" onClick={() => begin(gameMode)}><span>DOWNLOAD MORE FACES</span><kbd>SPACE</kbd></button>
+            <div className="complete-actions">
+              <button className="primary-button" type="button" onClick={() => begin(gameMode)}><span>PLAY AGAIN</span><kbd>SPACE</kbd></button>
+              <button className="secondary-button" type="button" onClick={returnToMainMenu}><span>MAIN MENU</span></button>
+            </div>
           </section>
         )}
 
