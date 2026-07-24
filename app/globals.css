@@ -1055,6 +1055,56 @@ kbd {
   to { opacity: 1; transform: translate(-50%, 0); filter: blur(0); }
 }
 
+.critical-quote-bug {
+  position: absolute;
+  z-index: 9;
+  right: 3.8%;
+  top: 28%;
+  width: min(25cqw, 300px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.42cqw;
+  padding: 0.78cqw 1cqw 0.86cqw 1.2cqw;
+  border: 1px solid rgba(239, 233, 218, 0.22);
+  border-right: 0.4cqw solid #b9231b;
+  background:
+    linear-gradient(100deg, rgba(3, 3, 3, 0.88), rgba(24, 2, 1, 0.72)),
+    repeating-linear-gradient(-45deg, transparent 0 0.35cqw, rgba(255, 255, 255, 0.025) 0.35cqw 0.7cqw);
+  color: #f1ecdf;
+  text-align: right;
+  text-transform: uppercase;
+  box-shadow: 0.4cqw 0.55cqw 1.4cqw rgba(0, 0, 0, 0.46);
+  animation: critical-quote-in 1220ms cubic-bezier(0.14, 0.8, 0.2, 1) both;
+  pointer-events: none;
+}
+
+.critical-quote-bug small {
+  color: #d13a2f;
+  font-size: clamp(4px, 0.58cqw, 8px);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.critical-quote-bug strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(8px, 1.12cqw, 15px);
+  line-height: 1.16;
+  text-wrap: balance;
+}
+
+.critical-quote-bug span {
+  color: rgba(239, 233, 218, 0.52);
+  font-size: clamp(4px, 0.55cqw, 8px);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+@keyframes critical-quote-in {
+  0% { opacity: 0; transform: translateX(2.5cqw) skew(-2deg); }
+  16%, 72% { opacity: 1; transform: translateX(0) skew(-2deg); }
+  100% { opacity: 0; transform: translateY(-0.6cqw) skew(-2deg); }
+}
+
 .side-mission-bug {
   position: absolute;
   z-index: 8;
@@ -1280,7 +1330,31 @@ kbd {
 }
 
 .complete-screen.has-stinger .result-rating {
-  margin: -0.35cqw 0 0.9cqw;
+  margin: -0.35cqw 0 0.55cqw;
+}
+
+.campaign-verdict {
+  width: min(69cqw, 780px);
+  display: flex;
+  justify-content: center;
+  gap: 0.7cqw;
+  margin-bottom: 0.8cqw;
+  color: rgba(236, 230, 217, 0.44);
+  font-size: clamp(4px, 0.58cqw, 8px);
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.campaign-verdict span {
+  padding: 0.34cqw 0.62cqw;
+  border: 1px solid rgba(235, 229, 215, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.campaign-verdict strong {
+  margin-left: 0.25cqw;
+  color: #e8e2d4;
 }
 
 .sequel-stinger {
@@ -1364,6 +1438,17 @@ kbd {
     width: 80cqw;
   }
 
+  .critical-quote-bug {
+    right: auto;
+    left: 3%;
+    top: 12%;
+    width: 42cqw;
+    padding: 1cqw 1.2cqw;
+    border-right-width: 1px;
+    border-left: 0.6cqw solid #b9231b;
+    text-align: left;
+  }
+
   .side-mission-bug {
     top: 17%;
     min-width: 28cqw;
@@ -1384,6 +1469,11 @@ kbd {
     padding-top: 4cqw;
   }
 
+  .campaign-verdict {
+    width: 78cqw;
+    flex-wrap: wrap;
+  }
+
   .sequel-stinger {
     width: 76cqw;
   }
@@ -1393,6 +1483,7 @@ kbd {
   .game-frame.is-hit { animation: none !important; }
 
   .victim-dialogue,
+  .critical-quote-bug,
   .side-mission-bug,
   .sequel-stinger {
     animation: none !important;
