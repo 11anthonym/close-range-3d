@@ -80,6 +80,11 @@ test("uses faceted low-poly heads and commercial-inspired comedy systems", async
   assert.doesNotMatch(source, /portraitCanvas|photographic-face|fictional-casting-atlas/);
   assert.match(source, /I KNOW WHERE YOUR BROTHER IS/);
   assert.match(source, /ANIMAL FACE SIDE MISSION/);
+  assert.match(source, /const CRITICAL_PULL_QUOTES/);
+  assert.match(source, /CRITICAL CONSENSUS/);
+  assert.match(source, /CURRENT MORAL CHOICE/);
+  assert.match(source, /PLOT RESOLVED/);
+  assert.match(source, /MORAL OPTIONS/);
   assert.match(source, /CLOSE RANGE 2/);
   assert.match(source, /CHAINSAW DAWN/);
   assert.match(config, /GameMode = "solo" \| "couch" \| "challenge"/);

@@ -90,6 +90,15 @@ const NARRATOR_BEATS = [
   "AN IMPORTANT MORAL CHOICE WAS AVAILABLE. YOU FIRED.",
 ];
 
+const CRITICAL_PULL_QUOTES = [
+  { quote: "THE FACE HAS NEVER FELT THIS OPEN.", outlet: "CONTROLLER REVIEW" },
+  { quote: "A LANDMARK IN FOREHEAD TECHNOLOGY.", outlet: "GAME JOURNAL" },
+  { quote: "EVERY SHOT DEEPENS A.J.'S CHARACTER.", outlet: "DIGITAL CULTURE" },
+  { quote: "THE EIGHT-INCH DRAW DISTANCE IS REVOLUTIONARY.", outlet: "PLAY SYSTEM" },
+  { quote: "FINALLY, A WORLD WITHOUT BACKTRACKING.", outlet: "INTERACTIVE MONTHLY" },
+  { quote: "ITS RESTRAINT IS MEASURED IN INCHES.", outlet: "CONSOLE STANDARD" },
+];
+
 type Shard = {
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
@@ -2131,6 +2140,13 @@ export default function CloseRangeGame() {
     return () => window.removeEventListener("resize", resolve);
   }, [qualityMode]);
 
+  useEffect(() => {
+    if (!aimReadoutRef.current) return;
+    aimReadoutRef.current.dataset.active = "false";
+    const label = aimReadoutRef.current.querySelector("strong");
+    if (label) label.textContent = "SELECT FACE AREA";
+  }, [targetIndex]);
+
   const begin = useCallback((mode: GameMode = "solo") => {
     ensureContext();
     if (transitionTimerRef.current) window.clearTimeout(transitionTimerRef.current);
@@ -2354,6 +2370,7 @@ export default function CloseRangeGame() {
     if (score >= 48000) return "UNFLINCHING";
     return "POINT-BLANK";
   }, [score]);
+  const criticalReview = CRITICAL_PULL_QUOTES[targetIndex % CRITICAL_PULL_QUOTES.length];
 
   const challengeUrl = useMemo(() => {
     if (phase !== "complete" || gameMode !== "challenge" || typeof window === "undefined") return "";
@@ -2398,7 +2415,7 @@ export default function CloseRangeGame() {
     if (aimReadoutRef.current) {
       aimReadoutRef.current.dataset.active = result?.hit ? "true" : "false";
       const label = aimReadoutRef.current.querySelector("strong");
-      if (label) label.textContent = result?.zone ? zoneLabel(result.zone) : "NO FACE";
+      if (label) label.textContent = result?.zone ? `SHOOT ${zoneLabel(result.zone)}` : "MOVE CLOSER";
     }
   }, []);
 
@@ -2475,6 +2492,13 @@ export default function CloseRangeGame() {
               <span>{phase === "transition" ? "PRESTIGE NARRATOR" : "WELL-DEVELOPED CHARACTER"}</span>
               <strong>{phase === "transition" ? NARRATOR_BEATS[targetIndex % NARRATOR_BEATS.length] : VICTIM_DIALOGUE[targetIndex]}</strong>
             </div>
+            {phase === "transition" && (
+              <aside className="critical-quote-bug" key={`review-${shot.tick}`} aria-label="Critical review">
+                <small>CRITICAL CONSENSUS // 11 OUT OF 10</small>
+                <strong>“{criticalReview.quote}”</strong>
+                <span>— {criticalReview.outlet}</span>
+              </aside>
+            )}
             {(target.species === "horse" || target.species === "ostrich") && (
               <div className="side-mission-bug" key={`side-${targetIndex}`}>
                 <small>HIDDEN EXTRA DISCOVERED</small>
@@ -2498,7 +2522,7 @@ export default function CloseRangeGame() {
               <div>{availableZoneCategories(target.species).map((zone) => <i key={zone}>{zone}</i>)}</div>
             </div>
             <div className="aim-readout" ref={aimReadoutRef} data-active="false">
-              <span>AIM AREA</span><strong>FACE IS OPEN</strong>
+              <span>CURRENT MORAL CHOICE</span><strong>SELECT FACE AREA</strong>
             </div>
             <div className={`weapon-mark weapon-${target.weaponKind}`} aria-label={weapon.label}>
               <i /><b /><span>{weapon.label}</span>
@@ -2608,6 +2632,11 @@ export default function CloseRangeGame() {
               <div><small>PARTS FOUND</small><strong>{partsFound.length}</strong></div>
             </div>
             <p className="result-rating">RATING // <strong>{rank}</strong></p>
+            <div className="campaign-verdict" aria-label="Campaign narrative review">
+              <span>PLOT RESOLVED <strong>TECHNICALLY</strong></span>
+              <span>MORAL OPTIONS <strong>ONE</strong></span>
+              <span>CRITICAL SCORE <strong>11 / 10</strong></span>
+            </div>
             {gameMode === "couch" && (
               <div className="multiplayer-result" aria-label="Split-screen final scores">
                 <span>PLAYER 1 <strong>{playerScores[0].toLocaleString()}</strong></span>
