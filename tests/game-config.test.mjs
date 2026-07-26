@@ -46,6 +46,7 @@ test("uses bounded adaptive quality profiles and external-asset fallbacks", asyn
   assert.match(game, /\(\) => resolve\(null\)/);
   assert.match(game, /preloadEnvironmentAssets/);
   assert.match(game, /entry\.userData\.disposed = true/);
+  assert.match(config, /memory < 3 \|\| cores < 4/);
 });
 
 test("ships both material sizes and records their license provenance", async () => {
@@ -86,12 +87,21 @@ test("builds four synchronous geometry-only low-poly human heads", async () => {
   for (const style of ["crew", "side-part", "high-top", "receding"]) assert.match(game, new RegExp(`hairStyle: "${style}"`));
   assert.match(game, /function buildHuman\(target: Target\)/);
   assert.match(game, /function createNoseWedgeGeometry/);
-  assert.match(game, /function createCheekPlaneGeometry/);
+  assert.match(game, /function createFacetedHeadGeometry/);
+  assert.match(game, /const segments = 14/);
+  assert.match(game, /const faceted = indexed\.toNonIndexed\(\)/);
+  assert.match(game, /low-poly-craniofacial-shell/);
+  assert.match(game, /function createAngularEyeGeometry/);
+  assert.match(game, /function createTrapezoidPrismGeometry/);
+  assert.match(game, /low-poly-jacket-torso/);
   assert.match(game, /function countLowPolyHeadTriangles/);
   assert.match(game, /flatShading: true/);
+  assert.match(game, /dithering: true/);
   assert.match(game, /faceAssetStatus = "procedural-low-poly-ready"/);
   assert.match(game, /lowPolyFaceLandmarks\(target\.detail\)/);
-  assert.match(game, /new THREE\.SphereGeometry\(1, 12, 8\)/);
+  assert.doesNotMatch(game, /low-poly-cranium|low-poly-forehead-face|low-poly-jaw/);
+  assert.doesNotMatch(game, /SphereGeometry\(0\.35, 42, 30\)/);
+  assert.doesNotMatch(game, /SphereGeometry\(0\.24, 38, 28\)/);
   assert.doesNotMatch(game, /SphereGeometry\(1, 112, 88\)/);
   assert.doesNotMatch(ledger, /MakeHuman|casting atlas|portrait/i);
   await assert.rejects(access(new URL("../public/assets/faces/fictional-casting-atlas.png", import.meta.url)));

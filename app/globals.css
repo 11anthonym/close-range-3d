@@ -66,14 +66,14 @@ button { color: inherit; }
   width: 100%;
   height: 100%;
   display: block;
-  filter: saturate(0.84) contrast(1.08) brightness(1.18) sepia(0.055);
+  filter: saturate(0.9) contrast(1.13) brightness(1.08) sepia(0.025);
 }
 
 .phase-title .three-stage,
 .phase-intro .three-stage,
 .phase-chapter .three-stage,
 .phase-complete .three-stage {
-  filter: saturate(0.66) contrast(1.12) brightness(0.58) sepia(0.13) blur(0.55px);
+  filter: saturate(0.72) contrast(1.12) brightness(0.72) sepia(0.08) blur(0.4px);
 }
 
 .vignette,
@@ -87,14 +87,14 @@ button { color: inherit; }
 .vignette {
   z-index: 2;
   background:
-    radial-gradient(ellipse at 51% 44%, transparent 23%, rgba(0, 0, 0, 0.035) 50%, rgba(0, 0, 0, 0.54) 114%),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.2), transparent 15%, transparent 83%, rgba(0, 0, 0, 0.19));
-  box-shadow: inset 0 0 4.2cqw rgba(0, 0, 0, 0.58);
+    radial-gradient(ellipse at 51% 44%, transparent 28%, rgba(0, 0, 0, 0.025) 56%, rgba(0, 0, 0, 0.42) 116%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.14), transparent 14%, transparent 84%, rgba(0, 0, 0, 0.14));
+  box-shadow: inset 0 0 3.6cqw rgba(0, 0, 0, 0.38);
 }
 
 .film-grain {
   z-index: 3;
-  opacity: 0.16;
+  opacity: 0.11;
   background:
     repeating-linear-gradient(0deg, transparent 0, transparent 2px, rgba(0, 0, 0, 0.3) 3px),
     radial-gradient(circle at 22% 33%, rgba(255, 255, 255, 0.12) 0 0.45px, transparent 0.8px),
@@ -937,17 +937,17 @@ kbd {
 @media (max-width: 900px) {
   .phase-playing .three-stage,
   .phase-transition .three-stage {
-    filter: saturate(0.88) contrast(1.05) brightness(1.28) sepia(0.04);
+    filter: saturate(0.94) contrast(1.1) brightness(1.14) sepia(0.02);
   }
 
   .phase-title .three-stage,
   .phase-intro .three-stage,
   .phase-chapter .three-stage,
   .phase-complete .three-stage {
-    filter: saturate(0.7) contrast(1.08) brightness(0.68) sepia(0.1) blur(0.45px);
+    filter: saturate(0.78) contrast(1.08) brightness(0.78) sepia(0.07) blur(0.32px);
   }
 
-  .vignette { opacity: 0.88; }
+  .vignette { opacity: 0.78; }
 }
 
 @media (max-width: 680px) and (orientation: portrait) {
@@ -1669,7 +1669,7 @@ kbd {
 }
 
 .split-player-panel + .split-player-panel { border-left: 2px solid #080808; }
-.split-player-panel .three-stage { z-index: 0; filter: saturate(0.88) contrast(1.06) brightness(1.24) sepia(0.04); }
+.split-player-panel .three-stage { z-index: 0; filter: saturate(0.92) contrast(1.12) brightness(1.12) sepia(0.02); }
 
 .split-player-panel::after {
   content: "";

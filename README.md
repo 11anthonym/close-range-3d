@@ -71,6 +71,29 @@ critical pull quotes, "moral choice" copy, character dialogue, and absurd
 narrative metrics to preserve the original joke: an extremely shallow action
 is discussed as if it were culturally profound.
 
+### Visual production approach
+
+The characters use original procedural meshes rather than portraits or imported
+character-creator assets. Human skull, temple, cheek, jaw, chin, eye, nose, ear,
+hair, neck, and clothing silhouettes are built from deliberately constrained
+geometry. The craniofacial shell is continuous, while facial features remain
+separate angular game-model parts so close-range hit zones stay readable.
+
+The renderer follows the relevant Three.js guidance:
+
+- [`MeshStandardMaterial.flatShading`](https://threejs.org/docs/pages/MeshStandardMaterial.html)
+  provides actual faceted surface normals instead of a pixel filter.
+- [`WebGLRenderer.toneMapping`](https://threejs.org/docs/pages/WebGLRenderer.html)
+  is used with sRGB output to control highlight and shadow response.
+- [Three.js shadow guidance](https://threejs.org/manual/en/shadows.html)
+  explains the extra render cost of each shadow-casting light. Close Range uses
+  one shadow key plus cheaper fill and rim lights so phones and split-screen
+  retain the modeled form without multiplying shadow passes.
+
+This is intentionally not modern photorealism. The target is the silhouette,
+material restraint, and dramatic lighting of a fictional modest-budget
+2008-2010 action game, exaggerated by the camera being absurdly close.
+
 ## Run locally
 
 Requires Node.js 22.13 or newer.

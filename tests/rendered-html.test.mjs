@@ -121,10 +121,14 @@ test("provides a real main menu, two-camera split-screen, and static challenge l
 test("keeps the 3D scene readable on desktop and phone displays", async () => {
   const source = await readFile(new URL("../app/CloseRangeGame.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /toneMappingExposure = 1\.42/);
-  assert.match(source, /new THREE\.DirectionalLight\(0xffd9c4, 1\.35\)/);
-  assert.match(source, /new THREE\.PointLight\(0xffead7, 1\.8/);
-  assert.match(styles, /brightness\(1\.18\)/);
+  assert.match(source, /renderer\.toneMapping = THREE\.NeutralToneMapping/);
+  assert.match(source, /toneMappingExposure = 1\.28/);
+  assert.match(source, /new THREE\.SpotLight\(0xffe4ca, 6\.8/);
+  assert.match(source, /new THREE\.DirectionalLight\(0xffd9c4, 0\.72\)/);
+  assert.match(source, /new THREE\.DirectionalLight\(0xa9c4cf, 1\.45\)/);
+  assert.match(source, /key\.shadow\.normalBias = 0\.022/);
+  assert.match(styles, /brightness\(1\.08\)/);
   assert.match(styles, /@media \(max-width: 900px\)/);
-  assert.match(styles, /brightness\(1\.28\)/);
+  assert.match(styles, /brightness\(1\.14\)/);
+  assert.match(styles, /\.vignette \{ opacity: 0\.78; \}/);
 });

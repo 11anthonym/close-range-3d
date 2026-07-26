@@ -216,9 +216,10 @@ function seededRandom(seed: number) {
 function lowPolyMaterial(color: number) {
   return new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.9,
+    roughness: 0.86,
     metalness: 0,
     flatShading: true,
+    dithering: true,
   });
 }
 
@@ -265,20 +266,6 @@ function disposeObject(root: THREE.Object3D | null) {
     else if (itemMaterial) disposeMaterial(itemMaterial);
   });
   root.removeFromParent();
-}
-
-function addEllipsoid(
-  group: THREE.Group,
-  scale: [number, number, number],
-  position: [number, number, number],
-  color: number,
-  segments = 28,
-) {
-  const item = mesh(new THREE.SphereGeometry(1, segments, Math.max(16, Math.floor(segments * 0.72))), color, 0.68, 0.01);
-  item.scale.set(...scale);
-  item.position.set(...position);
-  group.add(item);
-  return item;
 }
 
 function addHitZone(
@@ -340,11 +327,11 @@ function lowPolyFaceLandmarks(detail: number) {
     earY: 0.325,
     eyeX: shape.eyeSpacing,
     eyeY: shape.eyeY,
-    eyeZ: 0.331,
+    eyeZ: 0.302,
     noseY: shape.noseY - shape.nose[1] * 0.12,
-    noseZ: 0.25 + shape.nose[2] * 0.93,
+    noseZ: 0.274 + shape.nose[2] * 0.9,
     mouthY: shape.mouthY,
-    mouthZ: 0.334,
+    mouthZ: 0.276,
   };
 }
 
@@ -364,7 +351,12 @@ function addLowPolyPart(
   part.name = name;
   part.position.set(...position);
   part.scale.set(...scale);
-  part.castShadow = true;
+  const shadowlessDetail = [
+    "cheek", "brow", "eyebrow", "inner-ear", "eye-socket", "living-eye", "pupil",
+    "upper-lid", "nostril", "mouth", "lip", "chin-plane", "neck-shadow", "glasses",
+    "shirt-front", "lapel",
+  ].some((token) => name.includes(token));
+  part.castShadow = !shadowlessDetail;
   part.receiveShadow = true;
   part.userData.lowPolyHeadPart = true;
   part.userData.headVisual = true;
@@ -400,16 +392,74 @@ function createBrowWedgeGeometry(width: number, height: number, depth: number, s
   return triangleGeometry(vertices, [[0, 1, 5], [0, 5, 4], [4, 5, 6], [4, 6, 7], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]]);
 }
 
-function createCheekPlaneGeometry(side: number, shape: LowPolyHeadShape) {
-  const inner = side * 0.045;
-  const outer = side * shape.face[0] * 0.94;
-  const vertices: Array<[number, number, number]> = [
-    [inner, shape.eyeY - 0.015, 0.284],
-    [outer, shape.eyeY - 0.055, 0.218],
-    [outer * 0.9, shape.mouthY + 0.015, 0.205],
-    [inner, shape.mouthY + 0.06, 0.294],
+function createFacetedHeadGeometry(shape: LowPolyHeadShape) {
+  const segments = 14;
+  const rings: Array<{ y: number; width: number; front: number; back: number; lateralBias?: number }> = [
+    { y: 0.69, width: shape.cranium[0] * 0.48, front: shape.cranium[2] * 0.72, back: shape.cranium[2] * 0.76 },
+    { y: 0.625, width: shape.cranium[0] * 0.88, front: shape.cranium[2] * 0.94, back: shape.cranium[2] },
+    { y: 0.515, width: shape.cranium[0], front: shape.face[2] * 1.08, back: shape.cranium[2] * 1.02 },
+    { y: shape.eyeY, width: shape.face[0], front: 0.279, back: shape.cranium[2] * 0.98, lateralBias: 0.012 },
+    { y: 0.29, width: shape.face[0] * 1.02, front: 0.286, back: shape.face[2], lateralBias: 0.018 },
+    { y: shape.mouthY, width: shape.jaw[0] * 1.03, front: 0.263, back: shape.jaw[2] * 1.03 },
+    { y: 0.072, width: shape.jaw[0] * 0.82, front: 0.23, back: shape.jaw[2] * 0.94 },
+    { y: 0.015, width: shape.chin[0], front: 0.205, back: shape.chin[2] * 1.22 },
   ];
-  return triangleGeometry(vertices, side < 0 ? [[0, 2, 1], [0, 3, 2]] : [[0, 1, 2], [0, 2, 3]]);
+  const positions: number[] = [];
+  rings.forEach((ring) => {
+    for (let index = 0; index < segments; index += 1) {
+      const angle = (index / segments) * Math.PI * 2;
+      const sin = Math.sin(angle);
+      const cos = Math.cos(angle);
+      const depth = cos >= 0 ? ring.front : ring.back;
+      const sidePlane = 1 - Math.max(0, cos) * 0.055;
+      positions.push(
+        sin * ring.width * sidePlane,
+        ring.y + Math.abs(sin) * (ring.lateralBias ?? 0),
+        cos * depth,
+      );
+    }
+  });
+  const topIndex = positions.length / 3;
+  positions.push(0, 0.735, -0.012);
+  const bottomIndex = positions.length / 3;
+  positions.push(0, -0.005, 0.035);
+  const indices: number[] = [];
+  for (let ring = 0; ring < rings.length - 1; ring += 1) {
+    for (let index = 0; index < segments; index += 1) {
+      const next = (index + 1) % segments;
+      const upper = ring * segments + index;
+      const upperNext = ring * segments + next;
+      const lower = (ring + 1) * segments + index;
+      const lowerNext = (ring + 1) * segments + next;
+      indices.push(upper, lower, upperNext, upperNext, lower, lowerNext);
+    }
+  }
+  for (let index = 0; index < segments; index += 1) {
+    const next = (index + 1) % segments;
+    indices.push(topIndex, next, index);
+    const lastRing = (rings.length - 1) * segments;
+    indices.push(bottomIndex, lastRing + index, lastRing + next);
+  }
+  const indexed = new THREE.BufferGeometry();
+  indexed.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  indexed.setIndex(indices);
+  const faceted = indexed.toNonIndexed();
+  indexed.dispose();
+  faceted.computeVertexNormals();
+  faceted.computeBoundingSphere();
+  return faceted;
+}
+
+function createAngularEyeGeometry(width: number, height: number) {
+  const vertices: Array<[number, number, number]> = [
+    [-width / 2, 0, 0],
+    [-width * 0.22, height * 0.5, 0],
+    [width * 0.28, height * 0.42, 0],
+    [width / 2, -height * 0.03, 0],
+    [width * 0.18, -height * 0.5, 0],
+    [-width * 0.28, -height * 0.4, 0],
+  ];
+  return triangleGeometry(vertices, [[0, 1, 5], [1, 4, 5], [1, 2, 4], [2, 3, 4]]);
 }
 
 function createAngularMouthGeometry(width: number, open: boolean) {
@@ -462,6 +512,26 @@ function countLowPolyHeadTriangles(group: THREE.Group) {
   return Math.round(triangles);
 }
 
+function createTrapezoidPrismGeometry(topWidth: number, bottomWidth: number, height: number, depth: number) {
+  const halfHeight = height / 2;
+  const front = depth / 2;
+  const back = -depth / 2;
+  const vertices: Array<[number, number, number]> = [
+    [-topWidth / 2, halfHeight, front], [topWidth / 2, halfHeight, front],
+    [-bottomWidth / 2, -halfHeight, front], [bottomWidth / 2, -halfHeight, front],
+    [-topWidth / 2, halfHeight, back], [topWidth / 2, halfHeight, back],
+    [-bottomWidth / 2, -halfHeight, back], [bottomWidth / 2, -halfHeight, back],
+  ];
+  return triangleGeometry(vertices, [
+    [0, 2, 1], [1, 2, 3],
+    [5, 7, 4], [4, 7, 6],
+    [4, 6, 0], [0, 6, 2],
+    [1, 3, 5], [5, 3, 7],
+    [4, 0, 5], [5, 0, 1],
+    [2, 6, 3], [3, 6, 7],
+  ]);
+}
+
 function buildHuman(target: Target) {
   const group = new THREE.Group();
   const shape = lowPolyHeadShape(target.detail);
@@ -471,49 +541,62 @@ function buildHuman(target: Target) {
   const skinShadow = lowPolyMaterial(shiftedColor(shape.skin, -0.035));
   const socketFinish = lowPolyMaterial(shiftedColor(shape.skin, -0.18));
 
-  addLowPolyPart(group, new THREE.SphereGeometry(1, 12, 8), skin, "low-poly-cranium", [0, 0.38, -0.015], shape.cranium);
-  addLowPolyPart(group, new THREE.SphereGeometry(1, 10, 6), skinLight, "low-poly-forehead-face", [0, 0.345, 0.065], shape.face);
-  const jaw = addLowPolyPart(group, new THREE.SphereGeometry(1, 10, 6), skinShadow, "low-poly-jaw", [0, 0.145, 0.055], shape.jaw);
-  jaw.userData.lowerFace = true;
-  const chin = addLowPolyPart(group, new THREE.SphereGeometry(1, 8, 5), skin, "low-poly-chin", [0, 0.045, 0.115], shape.chin);
-  chin.userData.lowerFace = true;
+  addLowPolyPart(group, createFacetedHeadGeometry(shape), skin, "low-poly-craniofacial-shell", [0, 0, 0]);
 
   [-1, 1].forEach((side) => {
-    addLowPolyPart(group, createCheekPlaneGeometry(side, shape), side < 0 ? skinLight : skinShadow, `low-poly-cheek:${side}`, [0, 0, 0]);
     const brow = addLowPolyPart(
       group,
       createBrowWedgeGeometry(shape.eyeScale[0] * 1.9, 0.033, shape.browDepth, side),
       skinShadow,
       `low-poly-brow:${side}`,
-      [shape.eyeSpacing * side, shape.eyeY + 0.075, 0.245],
+      [shape.eyeSpacing * side, shape.eyeY + 0.072, 0.268],
     );
     brow.rotation.z = side * (shape.id === "sharp-chin" ? -0.09 : 0.045);
-    const eyebrow = addLowPolyPart(group, new THREE.BoxGeometry(shape.eyeScale[0] * 1.45, 0.011, 0.012), lowPolyMaterial(shape.hair), `low-poly-eyebrow:${side}`, [shape.eyeSpacing * side, shape.eyeY + 0.067, 0.296]);
+    const eyebrow = addLowPolyPart(group, new THREE.BoxGeometry(shape.eyeScale[0] * 1.45, 0.011, 0.012), lowPolyMaterial(shape.hair), `low-poly-eyebrow:${side}`, [shape.eyeSpacing * side, shape.eyeY + 0.064, 0.293]);
     eyebrow.rotation.z = side * (shape.id === "sharp-chin" ? -0.09 : 0.045);
 
     const earX = (shape.cranium[0] + shape.ear[0] * 0.62) * side;
     addLowPolyPart(group, new THREE.SphereGeometry(1, 6, 4), skin, `low-poly-ear:${side}`, [earX, 0.325, 0.005], shape.ear);
     addLowPolyPart(group, new THREE.CircleGeometry(1, 6), socketFinish, `low-poly-inner-ear:${side}`, [earX, 0.325, shape.ear[2] + 0.006], [shape.ear[0] * 0.42, shape.ear[1] * 0.55, 1]);
 
-    addLowPolyPart(group, new THREE.CircleGeometry(1, 8), socketFinish, `low-poly-eye-socket:${side}`, [shape.eyeSpacing * side, shape.eyeY, 0.294], [shape.eyeScale[0] * 1.18, shape.eyeScale[1] * 1.2, 1]);
-    const eye = addLowPolyPart(group, new THREE.SphereGeometry(1, 8, 4), lowPolyMaterial(0xd8d0bc), `living-eye:${side < 0 ? "left" : "right"}`, [shape.eyeSpacing * side, shape.eyeY, 0.31], [shape.eyeScale[0] * 0.82, shape.eyeScale[1] * 0.68, 0.021]);
-    eye.rotation.z = side * 0.04;
-    const pupil = addLowPolyPart(group, new THREE.CylinderGeometry(0.011, 0.011, 0.008, 8), lowPolyMaterial(shape.eye), `low-poly-pupil:${side}`, [shape.eyeSpacing * side, shape.eyeY, 0.331]);
-    pupil.rotation.x = Math.PI / 2;
+    const eyeTilt = side * (shape.id === "sharp-chin" ? -0.08 : shape.id === "heavy-jaw" ? 0.055 : 0.025);
+    const socket = addLowPolyPart(
+      group,
+      createAngularEyeGeometry(shape.eyeScale[0] * 1.9, shape.eyeScale[1] * 1.9),
+      socketFinish,
+      `low-poly-eye-socket:${side}`,
+      [shape.eyeSpacing * side, shape.eyeY, 0.284],
+    );
+    socket.rotation.z = eyeTilt;
+    const eye = addLowPolyPart(
+      group,
+      createAngularEyeGeometry(shape.eyeScale[0] * 1.42, shape.eyeScale[1] * 1.45),
+      lowPolyMaterial(0xd8d0bc),
+      `living-eye:${side < 0 ? "left" : "right"}`,
+      [shape.eyeSpacing * side, shape.eyeY, 0.292],
+    );
+    eye.rotation.z = eyeTilt;
+    addLowPolyPart(group, new THREE.CircleGeometry(0.012, 7), lowPolyMaterial(shape.eye), `low-poly-pupil:${side}`, [shape.eyeSpacing * side, shape.eyeY - 0.001, 0.299]);
+    const eyelid = addLowPolyPart(group, new THREE.BoxGeometry(shape.eyeScale[0] * 1.38, 0.008, 0.01), skinShadow, `low-poly-upper-lid:${side}`, [shape.eyeSpacing * side, shape.eyeY + shape.eyeScale[1] * 0.34, 0.298]);
+    eyelid.rotation.z = eyeTilt;
   });
 
-  addLowPolyPart(group, createNoseWedgeGeometry(...shape.nose), skinLight, "low-poly-nose-wedge", [0, shape.noseY, 0.25]);
-  addLowPolyPart(group, new THREE.SphereGeometry(1, 6, 4), skinShadow, "low-poly-nose-tip", [0, shape.noseY - shape.nose[1] * 0.35, 0.25 + shape.nose[2] * 0.84], [shape.nose[0] * 0.55, shape.nose[1] * 0.2, shape.nose[2] * 0.24]);
-  [-1, 1].forEach((side) => addLowPolyPart(group, new THREE.CircleGeometry(0.009, 6), socketFinish, `low-poly-nostril:${side}`, [shape.nose[0] * 0.21 * side, shape.noseY - shape.nose[1] * 0.42, 0.25 + shape.nose[2] * 0.935]));
+  addLowPolyPart(group, createNoseWedgeGeometry(...shape.nose), skinLight, "low-poly-nose-wedge", [0, shape.noseY, 0.274]);
+  addLowPolyPart(group, new THREE.SphereGeometry(1, 6, 4), skinShadow, "low-poly-nose-tip", [0, shape.noseY - shape.nose[1] * 0.35, 0.274 + shape.nose[2] * 0.81], [shape.nose[0] * 0.55, shape.nose[1] * 0.2, shape.nose[2] * 0.24]);
+  [-1, 1].forEach((side) => addLowPolyPart(group, new THREE.CircleGeometry(0.009, 6), socketFinish, `low-poly-nostril:${side}`, [shape.nose[0] * 0.21 * side, shape.noseY - shape.nose[1] * 0.42, 0.274 + shape.nose[2] * 0.9]));
 
   const mouthOpen = target.detail % 3 === 0;
-  const mouth = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.5, mouthOpen), lowPolyMaterial(0x351517), "low-poly-mouth", [0, shape.mouthY, 0.334]);
+  const mouth = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.54, mouthOpen), lowPolyMaterial(0x351517), "low-poly-mouth", [0, shape.mouthY, 0.27]);
   mouth.userData.lowerFace = true;
-  const lowerLip = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.43, false), lowPolyMaterial(shiftedColor(shape.skin, -0.11)), "low-poly-lower-lip", [0, shape.mouthY - 0.022, 0.338], [1, 0.5, 1]);
+  const lowerLip = addLowPolyPart(group, createAngularMouthGeometry(shape.jaw[0] * 0.44, false), lowPolyMaterial(shiftedColor(shape.skin, -0.11)), "low-poly-lower-lip", [0, shape.mouthY - 0.023, 0.273], [1, 0.5, 1]);
   lowerLip.userData.lowerFace = true;
+  const chinPlane = addLowPolyPart(group, createAngularMouthGeometry(shape.chin[0] * 1.45, false), skinLight, "low-poly-chin-plane", [0, 0.06, 0.218], [1, 1.8, 1]);
+  chinPlane.userData.lowerFace = true;
   addLowPolyHair(group, shape);
-  const neck = addLowPolyPart(group, new THREE.CylinderGeometry(0.12, 0.15, 0.25, 8), skinShadow, "low-poly-neck", [0, -0.075, -0.005]);
+  const neck = addLowPolyPart(group, new THREE.CylinderGeometry(0.115, 0.15, 0.31, 8), skinShadow, "low-poly-neck", [0, -0.15, -0.005]);
   neck.userData.lowerFace = true;
+  const neckShadow = addLowPolyPart(group, new THREE.CircleGeometry(1, 8), lowPolyMaterial(shiftedColor(shape.skin, -0.22)), "low-poly-neck-shadow", [0, -0.035, 0.154], [0.11, 0.035, 1]);
+  neckShadow.userData.lowerFace = true;
 
   if (target.detail % 5 === 4) {
     const glasses = lowPolyMaterial(0x111315);
@@ -526,55 +609,88 @@ function buildHuman(target: Target) {
   group.userData.faceAssetStatus = "procedural-low-poly-ready";
   group.userData.lowPolyTriangleCount = countLowPolyHeadTriangles(group);
 
-  const shoulders = addEllipsoid(group, [0.59, 0.28, 0.25], [0, -0.48, -0.02], clothes, 20);
-  shoulders.rotation.x = -0.05;
-  const torso = mesh(new THREE.CylinderGeometry(0.38, 0.55, 0.72, 16), clothes, 0.8, 0.02);
-  torso.position.y = -0.72;
-  group.add(torso);
-  const shirt = addBox(group, [0.19, 0.52, 0.025], [0, -0.58, 0.255], 0x17191a);
-  shirt.rotation.x = -0.04;
+  const jacket = addLowPolyPart(group, createTrapezoidPrismGeometry(1.08, 0.76, 0.82, 0.46), lowPolyMaterial(clothes), "low-poly-jacket-torso", [0, -0.72, -0.01]);
+  jacket.userData.headVisual = false;
   [-1, 1].forEach((side) => {
-    const lapel = addBox(group, [0.18, 0.42, 0.03], [0.115 * side, -0.51, 0.275], clothes === 0x111111 ? 0x292929 : clothes);
-    lapel.rotation.z = side * 0.24;
-    lapel.rotation.x = -0.05;
+    const shoulder = addLowPolyPart(group, new THREE.SphereGeometry(1, 8, 5), lowPolyMaterial(shiftedColor(clothes, side < 0 ? 0.025 : -0.035)), `low-poly-shoulder:${side}`, [0.53 * side, -0.48, -0.025], [0.24, 0.31, 0.25]);
+    shoulder.userData.headVisual = false;
   });
+  const shirt = addLowPolyPart(group, createTrapezoidPrismGeometry(0.18, 0.26, 0.53, 0.03), lowPolyMaterial(0x17191a), "low-poly-shirt-front", [0, -0.57, 0.238]);
+  shirt.userData.headVisual = false;
+  [-1, 1].forEach((side) => {
+    const lapel = addLowPolyPart(
+      group,
+      triangleGeometry(
+        [[0, 0.22, 0], [side * 0.23, 0.03, 0], [side * 0.1, -0.23, 0], [0, -0.06, 0]],
+        side < 0 ? [[0, 2, 1], [0, 3, 2]] : [[0, 1, 2], [0, 2, 3]],
+      ),
+      lowPolyMaterial(clothes === 0x111111 ? 0x292929 : shiftedColor(clothes, 0.035)),
+      `low-poly-lapel:${side}`,
+      [0, -0.48, 0.258],
+    );
+    lapel.rotation.z = side * 0.24;
+    lapel.userData.headVisual = false;
+  });
+  if (target.detail % 2 === 1) {
+    const tie = addLowPolyPart(group, new THREE.ConeGeometry(0.04, 0.28, 4), lowPolyMaterial(0x3a1110), "low-poly-tie", [0, -0.55, 0.273]);
+    tie.rotation.z = Math.PI;
+    tie.userData.headVisual = false;
+  }
   return group;
 }
 
 function buildHorse(target: Target) {
   const group = new THREE.Group();
   const [coat, mane, blanket] = target.palette;
-  const head = mesh(new THREE.SphereGeometry(0.35, 42, 30), coat);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 8), lowPolyMaterial(coat));
+  head.castShadow = true;
+  head.receiveShadow = true;
   head.scale.set(0.72, 1.25, 1.08);
   head.position.set(0, 0.3, 0.02);
+  head.userData.headVisual = true;
   group.add(head);
-  const muzzle = mesh(new THREE.SphereGeometry(0.25, 36, 24), 0x9d7154);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 7), lowPolyMaterial(0x9d7154));
+  muzzle.castShadow = true;
   muzzle.scale.set(0.78, 0.7, 1.2);
   muzzle.position.set(0, 0.15, 0.31);
   muzzle.userData.lowerFace = true;
+  muzzle.userData.headVisual = true;
   group.add(muzzle);
   [-1, 1].forEach((side) => {
-    const ear = mesh(new THREE.ConeGeometry(0.085, 0.36, 10), coat);
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.36, 6), lowPolyMaterial(coat));
     ear.position.set(0.16 * side, 0.72, -0.02);
     ear.rotation.z = side * -0.18;
+    ear.castShadow = true;
+    ear.userData.headVisual = true;
     group.add(ear);
-    const eye = mesh(new THREE.SphereGeometry(0.041, 20, 14), 0x090705, 0.18, 0.03);
-    eye.position.set(0.16 * side, 0.39, 0.335);
+    const eye = new THREE.Mesh(createAngularEyeGeometry(0.082, 0.052), lowPolyMaterial(0x090705));
+    eye.position.set(0.16 * side, 0.39, 0.348);
+    eye.rotation.z = side * 0.08;
+    eye.userData.headVisual = true;
     group.add(eye);
-    const glint = mesh(new THREE.SphereGeometry(0.008, 10, 8), 0xf8f1dc, 0.08, 0);
-    glint.position.set(0.16 * side - 0.006, 0.404, 0.369);
+    const glint = new THREE.Mesh(new THREE.CircleGeometry(0.008, 6), lowPolyMaterial(0xf8f1dc));
+    glint.position.set(0.16 * side - 0.006, 0.402, 0.352);
+    glint.userData.headVisual = true;
     group.add(glint);
+    const nostril = new THREE.Mesh(new THREE.CircleGeometry(0.018, 6), lowPolyMaterial(0x24120d));
+    nostril.position.set(0.074 * side, 0.15, 0.578);
+    nostril.userData.headVisual = true;
+    nostril.userData.lowerFace = true;
+    group.add(nostril);
   });
   for (let i = 0; i < 7; i += 1) {
-    const manePiece = mesh(new THREE.ConeGeometry(0.055, 0.22, 10), mane, 0.9, 0);
+    const manePiece = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.22, 6), lowPolyMaterial(mane));
     manePiece.position.set(0, 0.7 - i * 0.1, -0.3 - i * 0.01);
     manePiece.rotation.x = -0.28;
+    manePiece.userData.headVisual = true;
     group.add(manePiece);
   }
-  const neck = mesh(new THREE.CylinderGeometry(0.27, 0.4, 0.95, 28), coat);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.4, 0.95, 10), lowPolyMaterial(coat));
+  neck.castShadow = true;
   neck.position.y = -0.42;
   group.add(neck);
-  const body = mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.7, 10), blanket);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.7, 8), lowPolyMaterial(blanket));
+  body.castShadow = true;
   body.position.y = -0.85;
   group.add(body);
   return group;
@@ -583,27 +699,36 @@ function buildHorse(target: Target) {
 function buildOstrich(target: Target) {
   const group = new THREE.Group();
   const [skin, feathers, vest] = target.palette;
-  const neck = mesh(new THREE.CylinderGeometry(0.08, 0.13, 1.2, 24), skin);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.13, 1.2, 9), lowPolyMaterial(skin));
+  neck.castShadow = true;
   neck.position.y = -0.2;
   group.add(neck);
-  const head = mesh(new THREE.SphereGeometry(0.24, 38, 28), skin);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), lowPolyMaterial(skin));
+  head.castShadow = true;
+  head.receiveShadow = true;
   head.scale.set(0.78, 1, 0.82);
   head.position.y = 0.47;
+  head.userData.headVisual = true;
   group.add(head);
-  const beak = mesh(new THREE.ConeGeometry(0.12, 0.42, 10), 0xc48b3b);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.42, 6), lowPolyMaterial(0xc48b3b));
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.4, 0.35);
   beak.userData.lowerFace = true;
+  beak.userData.headVisual = true;
   group.add(beak);
   [-1, 1].forEach((side) => {
-    const eye = mesh(new THREE.SphereGeometry(0.05, 10, 8), 0xf2e9d2);
-    eye.position.set(0.1 * side, 0.53, 0.175);
+    const eye = new THREE.Mesh(createAngularEyeGeometry(0.094, 0.064), lowPolyMaterial(0xf2e9d2));
+    eye.position.set(0.1 * side, 0.53, 0.192);
+    eye.rotation.z = side * -0.08;
+    eye.userData.headVisual = true;
     group.add(eye);
-    const pupil = mesh(new THREE.SphereGeometry(0.022, 8, 6), 0x050505);
-    pupil.position.set(0.1 * side, 0.53, 0.215);
+    const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.021, 7), lowPolyMaterial(0x050505));
+    pupil.position.set(0.1 * side, 0.53, 0.198);
+    pupil.userData.headVisual = true;
     group.add(pupil);
   });
-  const body = mesh(new THREE.SphereGeometry(0.45, 36, 26), feathers);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8), lowPolyMaterial(feathers));
+  body.castShadow = true;
   body.scale.set(1, 0.85, 0.78);
   body.position.y = -0.85;
   group.add(body);
@@ -1097,16 +1222,20 @@ const WEAPON_POSES: Record<WeaponKind, { position: [number, number, number]; rot
 
 function addGunHand(gun: THREE.Group, longGrip = false) {
   const glove = material(0x171513, 0.92, 0.01);
-  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.19, 30, 22), glove);
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8), glove);
   hand.scale.set(0.82, longGrip ? 1.08 : 1.2, 0.76);
   hand.position.set(0.02, longGrip ? -0.34 : -0.42, longGrip ? -0.02 : 0.02);
   gun.add(hand);
   for (let i = 0; i < 3; i += 1) {
-    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.032, 0.13, 6, 12), glove);
+    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.032, 0.13, 5, 8), glove);
     finger.rotation.x = Math.PI / 2;
     finger.position.set(-0.065 + i * 0.065, longGrip ? -0.26 : -0.3, -0.13 - i * 0.014);
     gun.add(finger);
   }
+  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.34, 10), material(0x202326, 0.88, 0.02));
+  sleeve.position.set(0.035, longGrip ? -0.55 : -0.62, 0.12);
+  sleeve.rotation.x = -0.18;
+  gun.add(sleeve);
 }
 
 function buildGun(kind: WeaponKind) {
@@ -1118,7 +1247,7 @@ function buildGun(kind: WeaponKind) {
   let muzzleZ = -1.125;
 
   if (kind === "revolver") {
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.06, 0.83, 32), silver);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.06, 0.83, 16), silver);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.025, -0.68);
     gun.add(barrel);
@@ -1139,7 +1268,7 @@ function buildGun(kind: WeaponKind) {
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.42), silver);
     frame.position.set(0, -0.015, -0.11);
     gun.add(frame);
-    const grip = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.31, 8, 22), material(0x241a16, 0.72, 0.06));
+    const grip = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.31, 6, 12), material(0x241a16, 0.72, 0.06));
     grip.position.set(0, -0.27, 0.05);
     grip.rotation.x = -0.3;
     gun.add(grip);
@@ -1151,7 +1280,7 @@ function buildGun(kind: WeaponKind) {
     const upper = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.11, 0.8), steel);
     upper.position.set(0, 0.135, -0.45);
     gun.add(upper);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.55, 24), black);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.55, 12), black);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.03, -0.87);
     gun.add(barrel);
@@ -1163,17 +1292,17 @@ function buildGun(kind: WeaponKind) {
     stock.position.set(0, -0.02, 0.24);
     stock.rotation.x = -0.06;
     gun.add(stock);
-    const frontGrip = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.22, 7, 16), black);
+    const frontGrip = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.22, 6, 10), black);
     frontGrip.position.set(0, -0.19, -0.66);
     frontGrip.rotation.x = -0.15;
     gun.add(frontGrip);
   } else {
     muzzleZ = -1.32;
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 1.42, 28), steel);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 1.42, 16), steel);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.06, -0.66);
     gun.add(barrel);
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 1.08, 24), black);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 1.08, 14), black);
     tube.rotation.x = Math.PI / 2;
     tube.position.set(0, -0.055, -0.57);
     gun.add(tube);
@@ -1194,14 +1323,29 @@ function buildGun(kind: WeaponKind) {
     gun.add(stock);
   }
 
-  const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(kind === "shotgun" ? 0.068 : 0.057, 0.012, 10, 30), wornSteel);
+  const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.042, 0.075), kind === "revolver" ? silver : steel);
+  frontSight.position.set(0, kind === "shotgun" ? 0.13 : 0.105, muzzleZ + 0.18);
+  gun.add(frontSight);
+  const triggerGuard = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 6, 14, Math.PI * 1.55), black);
+  triggerGuard.scale.set(0.72, 1, 1);
+  triggerGuard.rotation.y = Math.PI / 2;
+  triggerGuard.rotation.z = -0.2;
+  triggerGuard.position.set(0.095, kind === "revolver" ? -0.13 : -0.16, kind === "shotgun" ? 0.02 : -0.05);
+  gun.add(triggerGuard);
+
+  const muzzleRing = new THREE.Mesh(new THREE.TorusGeometry(kind === "shotgun" ? 0.068 : 0.057, 0.012, 6, 16), wornSteel);
   muzzleRing.position.set(0, kind === "shotgun" ? 0.06 : 0.025, muzzleZ);
   gun.add(muzzleRing);
-  const muzzleDark = new THREE.Mesh(new THREE.CircleGeometry(kind === "shotgun" ? 0.058 : 0.047, 30), material(0x010101, 0.95, 0));
+  const muzzleDark = new THREE.Mesh(new THREE.CircleGeometry(kind === "shotgun" ? 0.058 : 0.047, 16), material(0x010101, 0.95, 0));
   muzzleDark.position.set(0, kind === "shotgun" ? 0.06 : 0.025, muzzleZ - 0.014);
   muzzleDark.rotation.y = Math.PI;
   gun.add(muzzleDark);
   addGunHand(gun, kind !== "revolver");
+  gun.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+  });
 
   const pose = WEAPON_POSES[kind];
   gun.position.set(...pose.position);
@@ -1497,23 +1641,28 @@ function ThreeStage({
     renderer.shadowMap.enabled = quality.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.42;
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.28;
 
-    const ambient = new THREE.HemisphereLight(0xd8dfd8, 0x281818, 1.72);
+    const ambient = new THREE.HemisphereLight(0xd8dfd8, 0x241719, 1.08);
     scene.add(ambient);
-    const key = new THREE.SpotLight(0xffeee0, 5.4, 7, Math.PI / 4.7, 0.72, 1.45);
-    key.position.set(0.8, 2.2, 0.1);
+    const key = new THREE.SpotLight(0xffe4ca, 6.8, 7, Math.PI / 5.2, 0.58, 1.45);
+    key.position.set(-0.72, 2.15, 0.38);
     key.target.position.set(0, 0, -1.8);
     key.castShadow = true;
     key.shadow.mapSize.set(quality.shadowMapSize || 256, quality.shadowMapSize || 256);
+    key.shadow.bias = -0.00035;
+    key.shadow.normalBias = 0.022;
     scene.add(key, key.target);
-    const faceFill = new THREE.DirectionalLight(0xffd9c4, 1.35);
-    faceFill.position.set(-1.4, 0.45, 1.1);
+    const faceFill = new THREE.DirectionalLight(0xffd9c4, 0.72);
+    faceFill.position.set(1.4, 0.32, 1.1);
     scene.add(faceFill);
-    const softFront = new THREE.PointLight(0xffead7, 1.8, 4.5, 1.65);
-    softFront.position.set(0.2, 0.15, 0.55);
+    const softFront = new THREE.PointLight(0xffead7, 0.62, 4.5, 1.65);
+    softFront.position.set(0.1, -0.08, 0.48);
     scene.add(softFront);
+    const coolRim = new THREE.DirectionalLight(0xa9c4cf, 1.45);
+    coolRim.position.set(2.2, 1.15, -2.4);
+    scene.add(coolRim);
 
     const gunRig = buildGun(target.weaponKind);
     camera.add(gunRig.gun);

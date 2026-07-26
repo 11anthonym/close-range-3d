@@ -187,7 +187,7 @@ export function resolveQualityTier(
   if (mode === "high") return "high";
   const memory = capabilities.deviceMemory ?? 4;
   const cores = capabilities.hardwareConcurrency ?? 4;
-  if (capabilities.coarsePointer || capabilities.viewportWidth < 720 || memory <= 3 || cores <= 4) return "low";
+  if (capabilities.coarsePointer || capabilities.viewportWidth < 720 || memory < 3 || cores < 4) return "low";
   if (capabilities.viewportWidth >= 1180 && memory >= 8 && cores >= 8) return "high";
   return "medium";
 }
