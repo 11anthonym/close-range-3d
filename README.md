@@ -50,6 +50,50 @@ splatter while keeping the same aiming and scoring.
 | 14-20 | Cubicle corridor and animal extras | Pump shotgun |
 | 21-24 | Classified epilogue | Revolver, SMG, shotgun, revolver |
 
+## Reference basis
+
+This restoration uses surviving coverage of the original 2009 browser game as
+a design reference rather than importing its retired Flash assets. The source
+record consistently describes a 24-encounter campaign about A.J. and his
+missing brother, a sequence of human faces followed by horse and ostrich
+surprises, revolver/SMG/shotgun escalation, and mock-serious praise for the
+game's supposedly important story and graphics:
+
+- [MobyGames overview and surviving gameplay description](https://www.mobygames.com/game/43772/close-range/)
+- [WIRED's contemporary report on the Onion video](https://www.wired.com/2009/04/video-onion-spe/)
+- [Kotaku's contemporary face-or-ear summary](https://kotaku.com/shooting-people-in-the-face-fps-5201200)
+- [Game*Spark's contemporary demo playthrough](https://www.gamespark.jp/article/2009/04/08/18430.html)
+
+The original demo largely automated accuracy and imposed no meaningful
+penalty. This edition deliberately keeps the later-requested free aim,
+anatomical hit zones, scoring, reloads, and split-screen play, while using
+critical pull quotes, "moral choice" copy, character dialogue, and absurd
+narrative metrics to preserve the original joke: an extremely shallow action
+is discussed as if it were culturally profound.
+
+### Visual production approach
+
+The characters use original procedural meshes rather than portraits or imported
+character-creator assets. Human skull, temple, cheek, jaw, chin, eye, nose, ear,
+hair, neck, and clothing silhouettes are built from deliberately constrained
+geometry. The craniofacial shell is continuous, while facial features remain
+separate angular game-model parts so close-range hit zones stay readable.
+
+The renderer follows the relevant Three.js guidance:
+
+- [`MeshStandardMaterial.flatShading`](https://threejs.org/docs/pages/MeshStandardMaterial.html)
+  provides actual faceted surface normals instead of a pixel filter.
+- [`WebGLRenderer.toneMapping`](https://threejs.org/docs/pages/WebGLRenderer.html)
+  is used with sRGB output to control highlight and shadow response.
+- [Three.js shadow guidance](https://threejs.org/manual/en/shadows.html)
+  explains the extra render cost of each shadow-casting light. Close Range uses
+  one shadow key plus cheaper fill and rim lights so phones and split-screen
+  retain the modeled form without multiplying shadow passes.
+
+This is intentionally not modern photorealism. The target is the silhouette,
+material restraint, and dramatic lighting of a fictional modest-budget
+2008-2010 action game, exaggerated by the camera being absurdly close.
+
 ## Run locally
 
 Requires Node.js 22.13 or newer.
